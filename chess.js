@@ -430,7 +430,8 @@ function undoMove() {
   const rows = list.querySelectorAll('.move-row');
   if (rows.length) {
     const lr = rows[rows.length-1];
-    const bs = lr.querySelectorAll('.mb');\n    if (bs.length > 1) bs[bs.length-1].remove(); else lr.remove();
+    const bs = lr.querySelectorAll('.mb');
+    if (bs.length > 1) bs[bs.length-1].remove(); else lr.remove();
   }
   sel = null; poss = [];
   renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
