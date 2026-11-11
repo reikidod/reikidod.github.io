@@ -285,7 +285,7 @@ function getSquareEl(r, c) {
   return boardEl.children[vr * 8 + vc] || null;
 }
 function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
-  if (!animEnabled || animating) { onDone(); return; }
+  if (!animEnabled || animating || !pieceCode) { onDone(); return; }
   const fromEl = getSquareEl(fr, fc);
   const toEl = getSquareEl(tr, tc);
   if (!fromEl || !toEl) { onDone(); return; }
@@ -301,7 +301,14 @@ function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
   document.body.appendChild(flyer);
   flyer.getBoundingClientRect();
   flyer.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px)';
-  const finish = () => { flyer.remove(); animating = false; onDone(); };
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    flyer.remove();
+    animating = false;
+    onDone();
+  };
   flyer.addEventListener('transitionend', finish, { once: true });
   setTimeout(finish, 280);
 }
@@ -373,6 +380,7 @@ function onSqClick(r, c) {
 }
 function doMove(fr, fc, tr, tc, remote) {
   const piece = board[fr][fc];
+  if (!piece) return;
   const target = board[tr][tc];
   if (target) {
     const capEl = document.getElementById(turn === 'w' ? 'cap-w' : 'cap-b');
