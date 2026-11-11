@@ -37,7 +37,6 @@ function switchAuthTab(tab) {
   document.getElementById('auth-login').classList.toggle('hidden', tab !== 'login');
   document.getElementById('auth-register').classList.toggle('hidden', tab !== 'register');
 }
-
 async function doLogin() {
   if (!firebaseReady) { showToast('Firebase не настроен'); return; }
   const email = document.getElementById('login-email').value.trim();
@@ -48,7 +47,6 @@ async function doLogin() {
   try { await auth.signInWithEmailAndPassword(email, pass); }
   catch (e) { errEl.textContent = firebaseErrorRu(e.code); }
 }
-
 async function doRegister() {
   if (!firebaseReady) { showToast('Firebase не настроен'); return; }
   const name = document.getElementById('reg-name').value.trim();
@@ -66,19 +64,15 @@ async function doRegister() {
     });
   } catch (e) { errEl.textContent = firebaseErrorRu(e.code); }
 }
-
 function doGuest() { currentUser = null; showScreen('lobby'); updateUserHeader(); }
-
 async function doLogout() {
   if (auth) await auth.signOut();
   currentUser = null; updateUserHeader(); showScreen('auth');
 }
-
 function onUserLoggedIn() {
   updateUserHeader();
   if (document.getElementById('auth').classList.contains('active')) showScreen('lobby');
 }
-
 function updateUserHeader() {
   const nameEl = document.getElementById('user-name-hdr');
   const avatarEl = document.getElementById('user-avatar-hdr');
@@ -93,7 +87,6 @@ function updateUserHeader() {
     profBtn.style.display = 'none'; logoutBtn.style.display = 'none';
   }
 }
-
 function firebaseErrorRu(code) {
   const map = {
     'auth/user-not-found': 'Пользователь не найден.',
@@ -106,7 +99,6 @@ function firebaseErrorRu(code) {
   };
   return map[code] || 'Ошибка: ' + code;
 }
-
 async function loadProfile() {
   if (!currentUser || !db) return;
   document.getElementById('prof-name').textContent = currentUser.displayName;
@@ -121,7 +113,6 @@ async function loadProfile() {
     document.getElementById('stat-draws').textContent = data.draws || 0;
   } catch(e) {}
 }
-
 async function updateDisplayName() {
   if (!currentUser || !auth) return;
   const name = document.getElementById('new-name-input').value.trim();
@@ -136,12 +127,10 @@ async function updateDisplayName() {
 }
 
 let currentCode = null, isOnline = false, myColor = null, onlineGameRef = null;
-
 function genCode() {
   const W = ['KING','ROOK','PAWN','WOLF','HAWK','BEAR','RUBY','IRON','NOVA','APEX'];
   return W[Math.floor(Math.random()*W.length)] + '-' + (Math.floor(Math.random()*90)+10);
 }
-
 async function createOnlineGame() {
   if (!firebaseReady) { showToast('Нужен Firebase'); return; }
   currentCode = genCode(); myColor = 'w'; isOnline = true;
@@ -154,7 +143,6 @@ async function createOnlineGame() {
     if (data && data.status === 'playing') { onlineGameRef.off(); startOnlineGame('w', data.guest || 'Гость'); }
   });
 }
-
 async function joinGame() {
   const code = document.getElementById('join-input').value.trim().toUpperCase();
   if (!code) { showToast('Введите код'); return; }
@@ -170,7 +158,6 @@ async function joinGame() {
     startOnlineGame('b', data.host || 'Хост');
   } catch(e) { showToast('Ошибка: ' + e.message); }
 }
-
 function startOnlineGame(myCol, opponentName) {
   myColor = myCol;
   const myName = currentUser ? currentUser.displayName : 'Вы';
@@ -184,36 +171,33 @@ function startOnlineGame(myCol, opponentName) {
     if (!data || !data.lastMove) return;
     const lm = data.lastMove;
     if (lm.by !== myColor) {
-      doMove(lm.fr, lm.fc, lm.tr, lm.tc, true);
-      renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+      const moving = board[lm.fr][lm.fc];
+      animatePieceMove(lm.fr, lm.fc, lm.tr, lm.tc, moving, () => {
+        doMove(lm.fr, lm.fc, lm.tr, lm.tc, true);
+        renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+      });
     }
   });
 }
-
 function pushMoveOnline(fr, fc, tr, tc) {
   if (!isOnline || !onlineGameRef) return;
   onlineGameRef.update({ lastMove: { fr, fc, tr, tc, by: myColor, ts: Date.now() }, turn: myColor === 'w' ? 'b' : 'w' });
 }
-
 async function cancelOnlineGame() {
   if (onlineGameRef) { onlineGameRef.off(); await onlineGameRef.remove(); onlineGameRef = null; }
   isOnline = false; currentCode = null; showScreen('lobby');
 }
-
 function copyCode() {
   navigator.clipboard.writeText(document.getElementById('wr-code').textContent).then(() => showToast('Код скопирован'));
 }
-
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if (id === 'profile') loadProfile();
   if (id === 'lobby') updateUserHeader();
 }
-
 function showJoin() { document.getElementById('join-row').classList.add('visible'); document.getElementById('join-input').focus(); }
 function hideJoin() { document.getElementById('join-row').classList.remove('visible'); }
-
 function startLocal(m) {
   isOnline = false;
   if (onlineGameRef) { onlineGameRef.off(); onlineGameRef = null; }
@@ -222,12 +206,10 @@ function startLocal(m) {
   document.getElementById('pname-black').textContent = m === 'pvp' ? 'Игрок 2' : (m === 'easy' ? 'ИИ (Новичок)' : 'ИИ (Сложный)');
   mode = m; showScreen('game'); initGame();
 }
-
 function resetAndLobby() {
   if (onlineGameRef) onlineGameRef.off();
   isOnline = false; showScreen('lobby');
 }
-
 let toastTimer = null;
 function showToast(msg, duration) {
   duration = duration || 2500;
@@ -251,16 +233,13 @@ const PIECE_URLS = {
   bN: "https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg",
   bP: "https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg"
 };
-
 function svgPiece(code) {
   const url = PIECE_URLS[code];
   if (!url) return '';
   return '<img src="' + url + '" alt="' + code + '" draggable="false" style="width:90%;height:90%;object-fit:contain;pointer-events:none;">';
 }
-
 const PIECE_NAMES = { K:'Король', Q:'Ферзь', R:'Ладья', B:'Слон', N:'Конь', P:'Пешка' };
 const PIECE_MOVES = { K:'на 1 клетку', Q:'любое направление', R:'горизонт/вертикаль', B:'диагональ', N:'буквой Г', P:'вперёд, бьёт по диагонали' };
-
 function buildPieceGuide() {
   const el = document.getElementById('piece-guide');
   if (!el) return;
@@ -273,7 +252,6 @@ function buildPieceGuide() {
     el.appendChild(row);
   });
 }
-
 const INIT_BOARD = [
   ['bR','bN','bB','bQ','bK','bB','bN','bR'],
   ['bP','bP','bP','bP','bP','bP','bP','bP'],
@@ -286,20 +264,59 @@ const INIT_BOARD = [
 ];
 const PIECE_VALUES = { P:1, N:3, B:3, R:5, Q:9, K:100 };
 
-let board, turn, sel, poss, history, capW, capB, flipped, mode, gameOver, lastMv;
+let animEnabled = localStorage.getItem('chessAnim') !== '0';
+let animating = false;
+function toggleAnim() {
+  animEnabled = !animEnabled;
+  localStorage.setItem('chessAnim', animEnabled ? '1' : '0');
+  const btn = document.getElementById('anim-btn');
+  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+  showToast(animEnabled ? 'Анимация ходов включена' : 'Анимация ходов выключена');
+}
+function updateAnimBtn() {
+  const btn = document.getElementById('anim-btn');
+  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+}
+function getSquareEl(r, c) {
+  const boardEl = document.getElementById('board');
+  if (!boardEl) return null;
+  const vr = flipped ? 7 - r : r;
+  const vc = flipped ? 7 - c : c;
+  return boardEl.children[vr * 8 + vc] || null;
+}
+function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
+  if (!animEnabled || animating) { onDone(); return; }
+  const fromEl = getSquareEl(fr, fc);
+  const toEl = getSquareEl(tr, tc);
+  if (!fromEl || !toEl) { onDone(); return; }
+  animating = true;
+  const fromRect = fromEl.getBoundingClientRect();
+  const toRect = toEl.getBoundingClientRect();
+  const fromImg = fromEl.querySelector('img');
+  if (fromImg) fromImg.style.opacity = '0';
+  const flyer = document.createElement('div');
+  flyer.className = 'piece-flyer';
+  flyer.innerHTML = svgPiece(pieceCode);
+  flyer.style.cssText = 'position:fixed;left:' + fromRect.left + 'px;top:' + fromRect.top + 'px;width:' + fromRect.width + 'px;height:' + fromRect.height + 'px;display:flex;align-items:center;justify-content:center;z-index:150;pointer-events:none;transition:transform .22s ease-out;';
+  document.body.appendChild(flyer);
+  flyer.getBoundingClientRect();
+  flyer.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px)';
+  const finish = () => { flyer.remove(); animating = false; onDone(); };
+  flyer.addEventListener('transitionend', finish, { once: true });
+  setTimeout(finish, 280);
+}
 
+let board, turn, sel, poss, history, capW, capB, flipped, mode, gameOver, lastMv;
 function initGame() {
   board = INIT_BOARD.map(r => r.slice());
   turn = 'w'; sel = null; poss = []; history = []; capW = []; capB = [];
-  flipped = false; gameOver = false; lastMv = null;
+  flipped = false; gameOver = false; lastMv = null; animating = false;
   document.getElementById('moves-list').innerHTML = '';
   document.getElementById('cap-w').innerHTML = '';
   document.getElementById('cap-b').innerHTML = '';
-  renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+  renderBoard(); updateStatus(); updateEval(); updatePlayerBanners(); updateAnimBtn();
 }
-
 function resetGame() { initGame(); }
-
 function renderBoard() {
   const el = document.getElementById('board');
   el.innerHTML = '';
@@ -327,19 +344,23 @@ function renderBoard() {
     const s = document.createElement('span'); s.textContent = n; rcol.appendChild(s);
   });
 }
-
 function onSqClick(r, c) {
-  if (gameOver) return;
+  if (gameOver || animating) return;
   if (isOnline && turn !== myColor) return;
   const piece = board[r][c];
   if (sel) {
     const mv = poss.find(m => m[0]===r && m[1]===c);
     if (mv) {
-      doMove(sel[0], sel[1], r, c);
-      if (isOnline) pushMoveOnline(sel[0], sel[1], r, c);
+      const fr = sel[0], fc = sel[1];
+      const moving = board[fr][fc];
       sel = null; poss = [];
-      renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
-      if (!gameOver && mode !== 'pvp' && !isOnline) setTimeout(aiMove, 400);
+      const after = () => {
+        doMove(fr, fc, r, c);
+        if (isOnline) pushMoveOnline(fr, fc, r, c);
+        renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+        if (!gameOver && mode !== 'pvp' && !isOnline) setTimeout(aiMove, animEnabled ? 280 : 400);
+      };
+      animatePieceMove(fr, fc, r, c, moving, after);
       return;
     }
     sel = null; poss = [];
@@ -350,7 +371,6 @@ function onSqClick(r, c) {
   }
   renderBoard();
 }
-
 function doMove(fr, fc, tr, tc, remote) {
   const piece = board[fr][fc];
   const target = board[tr][tc];
@@ -390,13 +410,11 @@ function doMove(fr, fc, tr, tc, remote) {
     }, 150);
   }
 }
-
 function algebraic(piece, fr, fc, tr, tc, captured) {
   const files = 'abcdefgh', ranks = '87654321';
   const pnames = { P:'', R:'Л', N:'К', B:'С', Q:'Ф', K:'Кр' };
   return pnames[piece[1]] + (piece[1]==='P' && captured ? files[fc] : '') + (captured ? 'x' : '') + files[tc] + ranks[tr];
 }
-
 function appendMoveToList(note) {
   const list = document.getElementById('moves-list');
   const num = Math.ceil(history.length / 2);
@@ -415,9 +433,8 @@ function appendMoveToList(note) {
   }
   list.scrollTop = list.scrollHeight;
 }
-
 function undoMove() {
-  if (!history.length || isOnline) { if (isOnline) showToast('Отмена недоступна онлайн'); return; }
+  if (!history.length || isOnline || animating) { if (isOnline) showToast('Отмена недоступна онлайн'); return; }
   const last = history.pop();
   board = last.snapshot; turn = last.piece[0]; gameOver = false;
   lastMv = history.length ? { fr: history[history.length-1].from[0], fc: history[history.length-1].from[1], tr: history[history.length-1].to[0], tc: history[history.length-1].to[1] } : null;
@@ -436,7 +453,6 @@ function undoMove() {
   sel = null; poss = [];
   renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
 }
-
 function getRaw(r, c, bd) {
   const piece = bd[r][c];
   if (!piece) return [];
@@ -474,12 +490,10 @@ function getRaw(r, c, bd) {
   }
   return moves.filter(([nr,nc]) => !bd[nr][nc] || bd[nr][nc][0]===opp);
 }
-
 function findKing(t, bd) {
   for (let r=0;r<8;r++) for (let c=0;c<8;c++) if (bd[r][c]===t+'K') return [r,c];
   return null;
 }
-
 function isInCheck(t, bd) {
   const k = findKing(t, bd);
   if (!k) return false;
@@ -488,7 +502,6 @@ function isInCheck(t, bd) {
     if (bd[r][c] && bd[r][c][0]===opp && getRaw(r,c,bd).some(([nr,nc]) => nr===k[0] && nc===k[1])) return true;
   return false;
 }
-
 function getLegal(r, c, bd, t) {
   return getRaw(r, c, bd).filter(([tr, tc]) => {
     const nb = bd.map(row => row.slice());
@@ -496,15 +509,13 @@ function getLegal(r, c, bd, t) {
     return !isInCheck(t, nb);
   });
 }
-
 function hasAnyLegal(t, bd) {
   for (let r=0;r<8;r++) for (let c=0;c<8;c++)
     if (bd[r][c] && bd[r][c][0]===t && getLegal(r,c,bd,t).length) return true;
   return false;
 }
-
 function aiMove() {
-  if (gameOver || turn !== 'b') return;
+  if (gameOver || turn !== 'b' || animating) return;
   const moves = [];
   for (let r=0;r<8;r++) for (let c=0;c<8;c++)
     if (board[r][c] && board[r][c][0]==='b')
@@ -521,10 +532,12 @@ function aiMove() {
     score += Math.random() * 0.5;
     if (score > bestScore) { bestScore = score; best = m; }
   });
-  doMove(best.fr, best.fc, best.tr, best.tc);
-  renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+  const moving = board[best.fr][best.fc];
+  animatePieceMove(best.fr, best.fc, best.tr, best.tc, moving, () => {
+    doMove(best.fr, best.fc, best.tr, best.tc);
+    renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+  });
 }
-
 function updateStatus() {
   const sdot = document.getElementById('sdot');
   const stext = document.getElementById('stext');
@@ -537,14 +550,12 @@ function updateStatus() {
     stext.innerHTML = inChk ? '<strong>Шах!</strong> Ход ' + (turn==='w'?'белых':'чёрных') + '.' : 'Ход ' + (turn==='w'?'белых':'чёрных') + '. Выберите фигуру.';
   }
 }
-
 function updatePlayerBanners() {
   ['white','black'].forEach(color => {
     const isActive = (color==='white' ? turn==='w' : turn==='b') && !gameOver;
     document.getElementById('pb-' + color).classList.toggle('active-turn', isActive);
   });
 }
-
 function updateEval() {
   let score = 0;
   for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
@@ -553,16 +564,13 @@ function updateEval() {
   }
   document.getElementById('eval-fill').style.height = Math.max(5, Math.min(95, 50 + score*4)) + '%';
 }
-
-function flipBoard() { flipped = !flipped; renderBoard(); }
-
+function flipBoard() { if (animating) return; flipped = !flipped; renderBoard(); }
 function showModal(title, msg) {
   document.getElementById('m-title').textContent = title;
   document.getElementById('m-msg').textContent = msg;
   document.getElementById('modal').classList.add('show');
 }
 function closeModal() { document.getElementById('modal').classList.remove('show'); }
-
 const TIPS = [
   'Контролируйте центр — e4, d4, e5, d5 дают больше пространства.',
   'Развивайте фигуры в начале: сначала кони и слоны, потом ладьи.',
@@ -578,5 +586,5 @@ function nextTip() {
   tipIdx = (tipIdx + 1) % TIPS.length;
   document.getElementById('tip-text').textContent = TIPS[tipIdx];
 }
-
 buildPieceGuide();
+updateAnimBtn();
