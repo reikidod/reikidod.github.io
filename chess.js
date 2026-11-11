@@ -166,17 +166,15 @@ function startOnlineGame(myCol, opponentName) {
   document.getElementById('code-area').style.display = 'block';
   document.getElementById('game-code-badge').textContent = currentCode;
   mode = 'pvp'; showScreen('game'); initGame();
+  let lastRemoteTs = 0;
   onlineGameRef.on('value', snap => {
     const data = snap.val();
     if (!data || !data.lastMove) return;
     const lm = data.lastMove;
-    if (lm.by !== myColor) {
-      const moving = board[lm.fr][lm.fc];
-      animatePieceMove(lm.fr, lm.fc, lm.tr, lm.tc, moving, () => {
-        doMove(lm.fr, lm.fc, lm.tr, lm.tc, true);
-        renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
-      });
-    }
+    if (lm.by === myColor) return;
+    if (lm.ts && lm.ts === lastRemoteTs) return;
+    lastRemoteTs = lm.ts || Date.now();
+    playMove(lm.fr, lm.fc, lm.tr, lm.tc, { remote: true });
   });
 }
 function pushMoveOnline(fr, fc, tr, tc) {
@@ -285,32 +283,65 @@ function getSquareEl(r, c) {
   return boardEl.children[vr * 8 + vc] || null;
 }
 function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
-  if (!animEnabled || animating || !pieceCode) { onDone(); return; }
+  const safeDone = (function() {
+    let called = false;
+    return function() {
+      if (called) return;
+      called = true;
+      animating = false;
+      try { onDone(); } catch (e) { console.error(e); }
+    };
+  })();
+
+  if (!animEnabled || animating || !pieceCode) { safeDone(); return; }
   const fromEl = getSquareEl(fr, fc);
   const toEl = getSquareEl(tr, tc);
-  if (!fromEl || !toEl) { onDone(); return; }
+  if (!fromEl || !toEl) { safeDone(); return; }
+
   animating = true;
   const fromRect = fromEl.getBoundingClientRect();
   const toRect = toEl.getBoundingClientRect();
   const fromImg = fromEl.querySelector('img');
   if (fromImg) fromImg.style.opacity = '0';
+
   const flyer = document.createElement('div');
   flyer.className = 'piece-flyer';
   flyer.innerHTML = svgPiece(pieceCode);
-  flyer.style.cssText = 'position:fixed;left:' + fromRect.left + 'px;top:' + fromRect.top + 'px;width:' + fromRect.width + 'px;height:' + fromRect.height + 'px;display:flex;align-items:center;justify-content:center;z-index:150;pointer-events:none;transition:transform .22s ease-out;';
+  flyer.style.cssText = 'position:fixed;left:' + fromRect.left + 'px;top:' + fromRect.top +
+    'px;width:' + fromRect.width + 'px;height:' + fromRect.height +
+    'px;display:flex;align-items:center;justify-content:center;z-index:150;pointer-events:none;' +
+    'transition:transform .22s ease-out;will-change:transform;';
   document.body.appendChild(flyer);
-  flyer.getBoundingClientRect();
+  flyer.offsetHeight;
   flyer.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px)';
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    flyer.remove();
-    animating = false;
-    onDone();
+
+  const cleanup = function(e) {
+    if (e && e.target !== flyer) return;
+    if (e && e.propertyName && e.propertyName !== 'transform') return;
+    flyer.removeEventListener('transitionend', cleanup);
+    if (flyer.parentNode) flyer.parentNode.removeChild(flyer);
+    safeDone();
   };
-  flyer.addEventListener('transitionend', finish, { once: true });
-  setTimeout(finish, 280);
+  flyer.addEventListener('transitionend', cleanup);
+  setTimeout(function() { cleanup(null); }, 300);
+}
+
+function playMove(fr, fc, tr, tc, options) {
+  options = options || {};
+  if (animating) return false;
+  const piece = board[fr] && board[fr][fc];
+  if (!piece) return false;
+
+  animatePieceMove(fr, fc, tr, tc, piece, function() {
+    doMove(fr, fc, tr, tc, options.remote);
+    if (!options.remote && isOnline) pushMoveOnline(fr, fc, tr, tc);
+    renderBoard();
+    updateStatus();
+    updateEval();
+    updatePlayerBanners();
+    if (typeof options.after === 'function') options.after();
+  });
+  return true;
 }
 
 let board, turn, sel, poss, history, capW, capB, flipped, mode, gameOver, lastMv;
@@ -359,15 +390,12 @@ function onSqClick(r, c) {
     const mv = poss.find(m => m[0]===r && m[1]===c);
     if (mv) {
       const fr = sel[0], fc = sel[1];
-      const moving = board[fr][fc];
       sel = null; poss = [];
-      const after = () => {
-        doMove(fr, fc, r, c);
-        if (isOnline) pushMoveOnline(fr, fc, r, c);
-        renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
-        if (!gameOver && mode !== 'pvp' && !isOnline) setTimeout(aiMove, animEnabled ? 280 : 400);
-      };
-      animatePieceMove(fr, fc, r, c, moving, after);
+      playMove(fr, fc, r, c, {
+        after: function() {
+          if (!gameOver && mode !== 'pvp' && !isOnline) setTimeout(aiMove, 120);
+        }
+      });
       return;
     }
     sel = null; poss = [];
@@ -540,11 +568,7 @@ function aiMove() {
     score += Math.random() * 0.5;
     if (score > bestScore) { bestScore = score; best = m; }
   });
-  const moving = board[best.fr][best.fc];
-  animatePieceMove(best.fr, best.fc, best.tr, best.tc, moving, () => {
-    doMove(best.fr, best.fc, best.tr, best.tc);
-    renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
-  });
+  playMove(best.fr, best.fc, best.tr, best.tc);
 }
 function updateStatus() {
   const sdot = document.getElementById('sdot');
