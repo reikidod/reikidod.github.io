@@ -6,13 +6,12 @@
   <title>Шахматный Клуб — Играй · Учись · Соревнуйся</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Nunito:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
 <div class="app-root">
 
-  <!-- AUTH -->
   <div class="screen active" id="auth">
     <div class="auth-inner">
       <div class="lobby-logo">♟ Шахматный Клуб<sub>Играй · Учись · Соревнуйся</sub></div>
@@ -38,7 +37,6 @@
     </div>
   </div>
 
-  <!-- LOBBY -->
   <div class="screen" id="lobby">
     <div class="user-header">
       <div class="user-pill" id="user-pill">
@@ -68,7 +66,6 @@
     </div>
   </div>
 
-  <!-- WAITROOM -->
   <div class="screen" id="waitroom">
     <div class="wr-inner">
       <div class="wr-label">ВАША ИГРА СОЗДАНА</div>
@@ -77,11 +74,10 @@
       <p class="wr-hint">Поделитесь этим кодом с другом.<br>Ожидаем подключения...</p>
       <p class="pulse" id="wr-status">● Ожидание игрока...</p>
       <div class="wr-btns"><button class="btn btn-ghost" onclick="cancelOnlineGame()">← Отмена</button></div>
-      <p class="wr-note">* Второй игрок должен ввести этот код в лобби,<br>нажав «Присоединиться».</p>
+      <p class="wr-note">* Второй игрок должен ввести этот код в лобби.</p>
     </div>
   </div>
 
-  <!-- PROFILE -->
   <div class="screen" id="profile">
     <div class="profile-inner">
       <div class="profile-header">
@@ -94,7 +90,7 @@
         <div class="stat-card"><div class="stat-val red" id="stat-losses">0</div><div class="stat-lbl">Поражения</div></div>
         <div class="stat-card"><div class="stat-val gold" id="stat-draws">0</div><div class="stat-lbl">Ничьи</div></div>
       </div>
-      <div class="profile-section"><div class="stitle">История игр</div><div class="history-list" id="history-list"><div class="history-empty">Игр пока нет. Сыграйте первую партию!</div></div></div>
+      <div class="profile-section"><div class="stitle">История игр</div><div class="history-list" id="history-list"><div class="history-empty">Игр пока нет.</div></div></div>
       <div class="profile-section">
         <div class="stitle">Изменить имя</div>
         <div class="inline-form"><input type="text" id="new-name-input" placeholder="Новое имя" maxlength="20"><button class="btn btn-gold btn-sm" onclick="updateDisplayName()">Сохранить</button></div>
@@ -104,7 +100,6 @@
     </div>
   </div>
 
-  <!-- GAME -->
   <div class="screen" id="game">
     <div class="gsidebar">
       <div class="stitle">Игроки</div>
@@ -139,19 +134,9 @@
     </div>
   </div>
 
-  <!-- MODAL -->
   <div class="modal-ov" id="modal">
     <div class="modal"><h2 id="m-title">Шах и мат!</h2><p id="m-msg">Победили белые.</p>
       <div class="modal-btns"><button class="btn btn-gold" onclick="closeModal();resetGame()">Реванш</button><button class="btn btn-ghost" onclick="closeModal();resetAndLobby()">В меню</button></div>
-    </div>
-  </div>
-
-  <!-- PROMO MODAL -->
-  <div class="modal-ov" id="promo-modal">
-    <div class="modal promo-modal">
-      <h2>Превращение пешки</h2>
-      <p>Выберите фигуру:</p>
-      <div class="promo-choices" id="promo-choices"></div>
     </div>
   </div>
 
@@ -161,6 +146,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="chess.js"></script>
+<script src="chess.js?v=7"></script>
 </body>
 </html>
