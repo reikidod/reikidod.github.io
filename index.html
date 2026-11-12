@@ -63,7 +63,7 @@
       <div class="lcard" onclick="showJoin()"><div class="lcard-icon">🎯</div><div class="lcard-title">Присоединиться</div><div class="lcard-desc">Ввести код от друга</div></div>
     </div>
     <div class="join-row" id="join-row">
-      <input id="join-input" placeholder="Введите код игры (напр. WOLF-42)" maxlength="10" oninput="this.value=this.value.toUpperCase()">
+      <input id="join-input" placeholder="Введите длинный код или старый код" maxlength="40" oninput="this.value=this.value.toUpperCase()">
       <button class="btn btn-gold" onclick="joinGame()">Войти</button>
       <button class="btn btn-ghost btn-sm" onclick="hideJoin()">✕</button>
     </div>
@@ -73,8 +73,11 @@
     <div class="wr-inner">
       <div class="wr-label">ВАША ИГРА СОЗДАНА</div>
       <div class="code-display" id="wr-code">—</div>
-      <div class="wr-share-row"><button class="btn btn-ghost btn-sm" onclick="copyCode()">📋 Скопировать код</button></div>
-      <p class="wr-hint">Поделитесь этим кодом с другом.<br>Ожидаем подключения...</p>
+      <div class="wr-share-row">
+        <button class="btn btn-ghost btn-sm" onclick="copyCode()">📋 Скопировать код</button>
+        <button class="btn btn-gold btn-sm" onclick="copyInviteLink()">🔗 Скопировать ссылку</button>
+      </div>
+      <p class="wr-hint">Отправьте другу код или ссылку — по ссылке он сразу попадёт в эту комнату.<br>Ожидаем подключения...</p>
       <p class="pulse" id="wr-status">● Ожидание игрока...</p>
       <div class="wr-btns"><button class="btn btn-ghost" onclick="cancelOnlineGame()">← Отмена</button></div>
       <p class="wr-note">* Второй игрок должен ввести этот код в лобби.</p>
