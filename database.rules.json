@@ -22,7 +22,7 @@
         },
         "moves": {
           "$seq": {
-            ".validate": "newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && newData.child('by').val() === 'w' || newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && newData.child('by').val() === 'b'"
+            ".validate": "newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && (newData.child('by').val() === 'w' || newData.child('by').val() === 'b')"
           }
         }
       }
