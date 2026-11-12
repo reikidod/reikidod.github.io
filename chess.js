@@ -283,13 +283,17 @@ async function joinGame(codeOverride) {
     }
     const clientId = getOnlineClientId();
     const playerName = currentUser ? currentUser.displayName : 'Гость';
+    let joinAbortReason = '';
     const result = await ref.transaction(data => {
-      if (!data) return;
-      if (data.status === 'waiting' && !data.guest) {
+      if (!data) {
+        joinAbortReason = 'Firebase передал пустую запись в транзакцию';
+        return;
+      }
+      if (data.status === 'waiting' && !data.guest && !data.guestUid) {
         data.status = 'playing';
         data.guest = playerName;
         data.guestClientId = clientId;
-        data.guestUid = currentUser && currentUser.uid;
+        data.guestUid = currentUser.uid;
         data.moveNo = Number(data.moveNo) || 0;
         data.moves = data.moves || {};
         data.updatedAt = Date.now();
@@ -297,11 +301,23 @@ async function joinGame(codeOverride) {
       }
       if (data.status === 'playing' && data.hostUid === currentUser.uid) return data;
       if (data.status === 'playing' && data.guestUid === currentUser.uid) return data;
+      joinAbortReason = 'status=' + String(data.status) + ', guest=' + String(data.guest || '') + ', guestUid=' + String(data.guestUid || '');
       return;
     }, undefined, false);
     if (!result.committed) {
       const latest = result.snapshot && result.snapshot.val();
-      showToast(latest ? 'Комната занята или код принадлежит другой партии' : 'Firebase не вернул данные комнаты. Проверьте права чтения и подключения.', 5000);
+      console.error('Firebase join transaction was not committed', {
+        code, uid: currentUser.uid, abortReason: joinAbortReason,
+        snapshotExists: !!(result.snapshot && result.snapshot.exists()),
+        snapshot: latest
+      });
+      if (joinAbortReason) {
+        showToast('Не удалось войти: комната уже занята или не ожидает игрока (' + joinAbortReason + ')', 6500);
+      } else if (latest) {
+        showToast('Комната занята или код принадлежит другой партии', 5000);
+      } else {
+        showToast('Транзакция отменена без данных. Откройте консоль браузера (F12) и пришлите ошибку Firebase.', 6500);
+      }
       return false;
     }
     const data = result.snapshot.val();
