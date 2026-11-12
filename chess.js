@@ -172,8 +172,8 @@ async function resumeLastOnlineGame() {
   isResumingOnlineGame = true;
   let saved;
   try { saved = JSON.parse(localStorage.getItem('chessActiveOnlineGame') || 'null'); }
-  catch (e) { clearActiveOnlineGame(); return; }
-  if (!saved || !saved.code) return;
+  catch (e) { clearActiveOnlineGame(); isResumingOnlineGame = false; return; }
+  if (!saved || !saved.code) { isResumingOnlineGame = false; return; }
   try {
     const ref = db.ref('games/' + saved.code);
     const snap = await ref.get();
@@ -290,10 +290,12 @@ function applyOnlineSnapshot(data, replaying) {
   // Поддержка комнат, созданных старой версией клиента.
   if (!entries.length && data.lastMove && Number(data.lastMove.seq) > 0) entries.push(data.lastMove);
   let changed = false;
+  let invalidSequence = false;
   const previousAnimation = animEnabled;
   if (replaying) animEnabled = false;
   try {
     entries.forEach(lm => {
+      if (invalidSequence) return;
       const seq = Number(lm.seq) || 0;
       if (!seq || seq <= lastAppliedOnlineSeq) return;
       if (!replaying && lm.by === myColor) {
@@ -302,6 +304,7 @@ function applyOnlineSnapshot(data, replaying) {
       }
       if (seq !== lastAppliedOnlineSeq + 1 || lm.by !== turn ||
           !getLegal(lm.fr, lm.fc, board, turn).some(m => m[0] === lm.tr && m[1] === lm.tc)) {
+        invalidSequence = true;
         showToast('Не удалось восстановить партию: обнаружена ошибка последовательности ходов.', 5000);
         return;
       }
@@ -325,6 +328,7 @@ function startOnlineGame(myCol, opponentName, initialData) {
   document.getElementById('code-area').style.display = 'block';
   document.getElementById('game-code-badge').textContent = currentCode;
   mode = 'pvp'; showScreen('game'); initGame();
+  onlineConnected = false;
   lastAppliedOnlineSeq = 0;
   // При новом открытии страницы проигрываем сохранённую историю с начальной позиции.
   applyOnlineSnapshot(initialData || {}, true);
@@ -356,6 +360,13 @@ function startOnlineGame(myCol, opponentName, initialData) {
     }
   });
 }
+function restoreOnlinePosition(data) {
+  if (!data) return;
+  stopClock();
+  initGame();
+  lastAppliedOnlineSeq = 0;
+  applyOnlineSnapshot(data, true);
+}
 function pushMoveOnline(fr, fc, tr, tc) {
   if (!isOnline || !onlineGameRef) return;
   onlineGameRef.transaction(data => {
@@ -369,10 +380,17 @@ function pushMoveOnline(fr, fc, tr, tc) {
     data.turn = myColor === 'w' ? 'b' : 'w';
     data.updatedAt = Date.now();
     return data;
-  }, (error, committed) => {
-    if (error) showToast('Не удалось отправить ход: ' + error.message, 4000);
-    else if (!committed) showToast('Ход не принят: сейчас очередь соперника.', 3500);
-    else lastAppliedOnlineSeq = Math.max(lastAppliedOnlineSeq, history.length);
+  }, (error, committed, snapshot) => {
+    if (error || !committed) {
+      showToast(error ? 'Не удалось отправить ход: ' + error.message : 'Ход не принят сервером. Позиция синхронизируется.', 4500);
+      const latest = snapshot && snapshot.val();
+      if (latest) restoreOnlinePosition(latest);
+      else onlineGameRef.get().then(s => restoreOnlinePosition(s.val())).catch(() => {
+        showToast('Не удалось восстановить позицию. Переподключитесь к партии по коду.', 5000);
+      });
+    } else {
+      lastAppliedOnlineSeq = Math.max(lastAppliedOnlineSeq, history.length);
+    }
   }, false);
 }
 async function cancelOnlineGame() {
