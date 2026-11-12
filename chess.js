@@ -220,22 +220,32 @@ async function resumeLastOnlineGame() {
   }
 }
 async function createOnlineGame() {
-  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
-  const hostName = currentUser ? currentUser.displayName : 'Гость';
+  if (!firebaseReady || !currentUser || !currentUser.uid) {
+    showToast('Для онлайн-игры войдите или выберите гостевой вход');
+    return;
+  }
+  const hostName = currentUser.displayName || 'Игрок';
   const clientId = getOnlineClientId();
-  let createdRef = null;
   try {
-    for (let attempt = 0; attempt < 8 && !createdRef; attempt++) {
-      const candidate = genCode();
-      const ref = db.ref('games/' + candidate);
-      const result = await ref.transaction(existing => existing === null
-        ? { host: hostName, hostUid: currentUser && currentUser.uid, hostClientId: clientId, status: 'waiting', turn: 'w', moveNo: 0, moves: {}, ts: Date.now(), updatedAt: Date.now() }
-        : undefined, undefined, false);
-      if (result.committed) { currentCode = candidate; createdRef = ref; }
-    }
-    if (!createdRef) throw new Error('Не удалось подобрать свободный код. Попробуйте ещё раз.');
-    onlineGameRef = createdRef;
-    myColor = 'w'; isOnline = true;
+    // Код содержит 96 случайных бит, поэтому конфликт практически исключён.
+    // set() не требует предварительного .read, в отличие от transaction() при создании комнаты.
+    const candidate = genCode();
+    const ref = db.ref('games/' + candidate);
+    await ref.set({
+      host: hostName,
+      hostUid: currentUser.uid,
+      hostClientId: clientId,
+      status: 'waiting',
+      turn: 'w',
+      moveNo: 0,
+      moves: {},
+      ts: Date.now(),
+      updatedAt: Date.now()
+    });
+    currentCode = candidate;
+    onlineGameRef = ref;
+    myColor = 'w';
+    isOnline = true;
     saveActiveOnlineGame(currentCode, 'w');
     document.getElementById('wr-code').textContent = currentCode;
     showScreen('waitroom');
@@ -247,10 +257,15 @@ async function createOnlineGame() {
       } else if (data && data.status === 'finished') {
         showToast('Партия завершена', 3500);
       }
+    }, error => {
+      showToast('Нет доступа к комнате: ' + error.message, 4500);
     });
   } catch (e) {
-    isOnline = false; currentCode = null; onlineGameRef = null;
-    showToast('Не удалось создать игру: ' + e.message, 4000);
+    isOnline = false;
+    currentCode = null;
+    onlineGameRef = null;
+    showToast('Не удалось создать игру: ' + e.message, 5000);
+    console.error('Firebase create room error:', e);
   }
 }
 async function joinGame(codeOverride) {
