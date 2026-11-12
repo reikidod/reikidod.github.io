@@ -159,3 +159,23 @@ body { background: var(--bg); font-family: 'Nunito', sans-serif; color: var(--cr
 
 @media (max-width: 900px) { :root { --sq: 56px; } .gsidebar { width: 150px; } .profile-stats { grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 680px) { :root { --sq: 42px; } #game { flex-direction: column; } .gsidebar { width: 100%; border-right: none; border-bottom: .5px solid var(--border); } .gsidebar.right { border-left: none; border-top: .5px solid var(--border); } .lobby-cards.three { grid-template-columns: 1fr; } .lobby-cards.two { grid-template-columns: 1fr 1fr; } }
+
+
+/* Обновлённый интерфейс */
+.screen.active { animation: screen-enter .48s cubic-bezier(.2,.75,.25,1) both; }
+@keyframes screen-enter { from { opacity:0; transform:translateY(18px) scale(.985); filter:blur(3px); } to { opacity:1; transform:translateY(0) scale(1); filter:blur(0); } }
+#auth.screen.active { animation: auth-enter .55s ease both; }
+@keyframes auth-enter { from { opacity:0; transform:scale(1.025); } to { opacity:1; transform:scale(1); } }
+#lobby.screen.active { animation: lobby-enter .65s cubic-bezier(.16,1,.3,1) both; }
+@keyframes lobby-enter { from { opacity:0; transform:translateY(30px) scale(.97); filter:blur(5px); } to { opacity:1; transform:translateY(0) scale(1); filter:blur(0); } }
+.clock-panel { width:100%; max-width:680px; display:flex; align-items:center; justify-content:center; gap:10px; }
+.clock-box { min-width:112px; padding:9px 16px; border:1px solid var(--border); border-radius:9px; background:var(--surface); display:flex; flex-direction:column; gap:2px; opacity:.65; transition:all .2s; }
+.clock-box span { color:var(--muted); font-size:9px; letter-spacing:.12em; }
+.clock-box strong { font:700 1.35rem 'Nunito',sans-serif; font-variant-numeric:tabular-nums; }
+.clock-box.active { opacity:1; border-color:var(--gold); background:rgba(201,168,76,.12); box-shadow:0 0 18px rgba(201,168,76,.08); }
+.clock-box.low strong { color:var(--red); }
+.review-controls { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+#review-position { color:var(--muted); font-size:11px; min-width:48px; text-align:center; font-variant-numeric:tabular-nums; }
+.mb.active { color:var(--gold); outline:1px solid rgba(201,168,76,.5); background:rgba(201,168,76,.12); }
+@media (max-width:680px) { .clock-panel { order:-1; } .clock-box { min-width:90px; padding:7px 10px; } .clock-box strong { font-size:1.1rem; } .review-controls { margin:6px 0; } }
+@media (prefers-reduced-motion:reduce) { .screen.active,#auth.screen.active,#lobby.screen.active { animation:none; } }
