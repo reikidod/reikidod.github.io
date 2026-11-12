@@ -63,8 +63,15 @@ async function doRegister() {
     });
   } catch (e) { errEl.textContent = firebaseErrorRu(e.code); }
 }
-function doGuest() {
-  currentUser = null; showScreen('lobby'); updateUserHeader();
+async function doGuest() {
+  if (auth && !auth.currentUser) {
+    try { await auth.signInAnonymously(); }
+    catch (e) { showToast('Не удалось войти как гость: ' + e.message, 4500); return; }
+  }
+  if (auth && auth.currentUser) {
+    currentUser = { uid: auth.currentUser.uid, displayName: auth.currentUser.displayName || 'Гость', email: null };
+  } else currentUser = null;
+  showScreen('lobby'); updateUserHeader();
   resumeLastOnlineGame();
 }
 async function doLogout() {
@@ -132,6 +139,8 @@ async function updateDisplayName() {
 let currentCode = null, isOnline = false, myColor = null, onlineGameRef = null;
 let lastAppliedOnlineSeq = 0;
 let onlineConnectionRef = null;
+let onlineConnected = true;
+let isResumingOnlineGame = false;
 function getOnlineClientId() {
   const key = 'chessOnlineClientId';
   let id = localStorage.getItem(key);
@@ -159,7 +168,8 @@ function clearActiveOnlineGame() {
   localStorage.removeItem('chessActiveOnlineGame');
 }
 async function resumeLastOnlineGame() {
-  if (!firebaseReady || isOnline) return;
+  if (!firebaseReady || isOnline || isResumingOnlineGame) return;
+  isResumingOnlineGame = true;
   let saved;
   try { saved = JSON.parse(localStorage.getItem('chessActiveOnlineGame') || 'null'); }
   catch (e) { clearActiveOnlineGame(); return; }
@@ -169,11 +179,13 @@ async function resumeLastOnlineGame() {
     const snap = await ref.get();
     const data = snap.val();
     const clientId = getOnlineClientId();
-    if (!data || (data.hostClientId !== clientId && data.guestClientId !== clientId)) {
+    const uid = auth && auth.currentUser ? auth.currentUser.uid : null;
+    if (!data || !uid || (data.hostUid !== uid && data.guestUid !== uid) ||
+        (data.hostClientId !== clientId && data.guestClientId !== clientId)) {
       clearActiveOnlineGame();
       return;
     }
-    const color = data.hostClientId === clientId ? 'w' : 'b';
+    const color = data.hostUid === uid ? 'w' : 'b';
     currentCode = saved.code; myColor = color; isOnline = true; onlineGameRef = ref;
     if (data.status === 'playing') {
       const opponent = color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост');
@@ -195,10 +207,12 @@ async function resumeLastOnlineGame() {
     }
   } catch (e) {
     showToast('Не удалось восстановить партию: ' + e.message, 4000);
+  } finally {
+    isResumingOnlineGame = false;
   }
 }
 async function createOnlineGame() {
-  if (!firebaseReady) { showToast('Нужен Firebase'); return; }
+  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
   const hostName = currentUser ? currentUser.displayName : 'Гость';
   const clientId = getOnlineClientId();
   let createdRef = null;
@@ -207,7 +221,7 @@ async function createOnlineGame() {
       const candidate = genCode();
       const ref = db.ref('games/' + candidate);
       const result = await ref.transaction(existing => existing === null
-        ? { host: hostName, hostClientId: clientId, status: 'waiting', turn: 'w', moveNo: 0, moves: {}, ts: Date.now(), updatedAt: Date.now() }
+        ? { host: hostName, hostUid: currentUser && currentUser.uid, hostClientId: clientId, status: 'waiting', turn: 'w', moveNo: 0, moves: {}, ts: Date.now(), updatedAt: Date.now() }
         : undefined, undefined, false);
       if (result.committed) { currentCode = candidate; createdRef = ref; }
     }
@@ -234,7 +248,7 @@ async function createOnlineGame() {
 async function joinGame() {
   const code = document.getElementById('join-input').value.trim().toUpperCase();
   if (!code) { showToast('Введите код'); return; }
-  if (!firebaseReady) { showToast('Нужен Firebase'); return; }
+  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
   try {
     const ref = db.ref('games/' + code);
     const clientId = getOnlineClientId();
@@ -245,6 +259,7 @@ async function joinGame() {
         data.status = 'playing';
         data.guest = playerName;
         data.guestClientId = clientId;
+        data.guestUid = currentUser && currentUser.uid;
         data.moveNo = Number(data.moveNo) || 0;
         data.moves = data.moves || {};
         data.updatedAt = Date.now();
@@ -330,6 +345,7 @@ function startOnlineGame(myCol, opponentName, initialData) {
   onlineConnectionRef = db.ref('.info/connected');
   onlineConnectionRef.on('value', snap => {
     const connected = snap.val() === true;
+    onlineConnected = connected;
     const status = document.getElementById('stext');
     if (!connected) {
       showToast('Соединение потеряно. Партия сохранена, ждём переподключения…', 5000);
@@ -603,6 +619,7 @@ function renderBoard() {
 }
 function onSqClick(r, c) {
   if (gameOver || animating || reviewIndex !== null) return;
+  if (isOnline && !onlineConnected) { showToast('Нет соединения. Дождитесь переподключения.'); return; }
   if (isOnline && turn !== myColor) return;
   const piece = board[r][c];
   if (sel) {
