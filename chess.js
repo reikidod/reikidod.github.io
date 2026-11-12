@@ -63,7 +63,10 @@ async function doRegister() {
     });
   } catch (e) { errEl.textContent = firebaseErrorRu(e.code); }
 }
-function doGuest() { currentUser = null; showScreen('lobby'); updateUserHeader(); }
+function doGuest() {
+  currentUser = null; showScreen('lobby'); updateUserHeader();
+  resumeLastOnlineGame();
+}
 async function doLogout() {
   if (auth) await auth.signOut();
   currentUser = null; updateUserHeader(); showScreen('auth');
@@ -71,6 +74,7 @@ async function doLogout() {
 function onUserLoggedIn() {
   updateUserHeader();
   if (document.getElementById('auth').classList.contains('active')) showScreen('lobby');
+  resumeLastOnlineGame();
 }
 function updateUserHeader() {
   const nameEl = document.getElementById('user-name-hdr');
@@ -153,6 +157,45 @@ function saveActiveOnlineGame(code, color) {
 }
 function clearActiveOnlineGame() {
   localStorage.removeItem('chessActiveOnlineGame');
+}
+async function resumeLastOnlineGame() {
+  if (!firebaseReady || isOnline) return;
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem('chessActiveOnlineGame') || 'null'); }
+  catch (e) { clearActiveOnlineGame(); return; }
+  if (!saved || !saved.code) return;
+  try {
+    const ref = db.ref('games/' + saved.code);
+    const snap = await ref.get();
+    const data = snap.val();
+    const clientId = getOnlineClientId();
+    if (!data || (data.hostClientId !== clientId && data.guestClientId !== clientId)) {
+      clearActiveOnlineGame();
+      return;
+    }
+    const color = data.hostClientId === clientId ? 'w' : 'b';
+    currentCode = saved.code; myColor = color; isOnline = true; onlineGameRef = ref;
+    if (data.status === 'playing') {
+      const opponent = color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост');
+      startOnlineGame(color, opponent, data);
+      showToast('Партия восстановлена', 3000);
+    } else if (data.status === 'waiting' && color === 'w') {
+      document.getElementById('wr-code').textContent = currentCode;
+      showScreen('waitroom');
+      onlineGameRef.on('value', roomSnap => {
+        const latest = roomSnap.val();
+        if (latest && latest.status === 'playing' && latest.guest) {
+          onlineGameRef.off('value');
+          startOnlineGame('w', latest.guest, latest);
+        }
+      });
+      showToast('Ожидание соперника восстановлено', 3000);
+    } else {
+      isOnline = false; onlineGameRef = null; clearActiveOnlineGame();
+    }
+  } catch (e) {
+    showToast('Не удалось восстановить партию: ' + e.message, 4000);
+  }
 }
 async function createOnlineGame() {
   if (!firebaseReady) { showToast('Нужен Firebase'); return; }
