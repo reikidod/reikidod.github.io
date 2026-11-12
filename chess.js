@@ -274,6 +274,13 @@ async function joinGame(codeOverride) {
   if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return false; }
   try {
     const ref = db.ref('games/' + code);
+    // Сначала отдельно проверяем чтение комнаты: это отличает отсутствие комнаты
+    // от запрета Firebase Rules на чтение/подключение.
+    const roomCheck = await ref.get();
+    if (!roomCheck.exists()) {
+      showToast('Комната не найдена в базе. Проверьте код и Firebase project.', 4500);
+      return false;
+    }
     const clientId = getOnlineClientId();
     const playerName = currentUser ? currentUser.displayName : 'Гость';
     const result = await ref.transaction(data => {
@@ -294,7 +301,7 @@ async function joinGame(codeOverride) {
     }, undefined, false);
     if (!result.committed) {
       const latest = result.snapshot && result.snapshot.val();
-      showToast(latest ? 'Комната занята или код принадлежит другой партии' : 'Игра не найдена');
+      showToast(latest ? 'Комната занята или код принадлежит другой партии' : 'Firebase не вернул данные комнаты. Проверьте права чтения и подключения.', 5000);
       return false;
     }
     const data = result.snapshot.val();
