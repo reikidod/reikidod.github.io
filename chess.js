@@ -357,7 +357,7 @@ function initGame() {
   clockRemaining = { w: clockInitial, b: clockInitial };
   board = INIT_BOARD.map(r => r.slice());
   turn = 'w'; sel = null; poss = []; history = []; capW = []; capB = [];
-  flipped = false; gameOver = false; lastMv = null; animating = false;
+  flipped = isOnline && myColor === 'b'; gameOver = false; lastMv = null; animating = false;
   document.getElementById('moves-list').innerHTML = '';
   document.getElementById('cap-w').innerHTML = '';
   document.getElementById('cap-b').innerHTML = '';
@@ -392,6 +392,13 @@ function renderBoard() {
   (flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1]).forEach(n => {
     const s = document.createElement('span'); s.textContent = n; rcol.appendChild(s);
   });
+  const fileRow = document.querySelector('.file-row');
+  if (fileRow) fileRow.innerHTML = (flipped ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h']).map(file => '<span>' + file + '</span>').join('');
+  const sideLabels = document.querySelectorAll('.board-area .side-label');
+  if (sideLabels.length >= 2) {
+    sideLabels[0].textContent = flipped ? 'Белые' : 'Чёрные';
+    sideLabels[1].textContent = flipped ? 'Чёрные' : 'Белые';
+  }
 }
 function onSqClick(r, c) {
   if (gameOver || animating || reviewIndex !== null) return;
