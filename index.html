@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Шахматный Клуб — Играй · Учись · Соревнуйся</title>
+  <title>Шахматный Клуб — Шахматы онлайн</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="favicon.svg">
   <meta name="theme-color" content="#0f0e0c">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Nunito:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 
@@ -17,7 +17,7 @@
 
   <div class="screen active" id="auth">
     <div class="auth-inner">
-      <div class="lobby-logo">♟ Шахматный Клуб<sub>Играй · Учись · Соревнуйся</sub></div>
+      <div class="lobby-logo">♟ Шахматный Клуб<sub>Играй · Соревнуйся</sub></div>
       <div class="auth-tabs">
         <button class="auth-tab active" onclick="switchAuthTab('login')">Войти</button>
         <button class="auth-tab" onclick="switchAuthTab('register')">Регистрация</button>
@@ -104,22 +104,32 @@
   </div>
 
   <div class="screen" id="game">
-    <div class="gsidebar">
-      <div class="stitle">Игроки</div>
-      <div class="player-banner" id="pb-black"><div class="pb-avatar black-av">♟</div><div><div class="pb-name" id="pname-black">Чёрные</div><div class="pb-turn" id="pturn-black">Ваш ход</div></div></div>
-      <div class="player-banner active-turn" id="pb-white"><div class="pb-avatar white-av">♙</div><div><div class="pb-name" id="pname-white">Белые</div><div class="pb-turn" id="pturn-white">Ваш ход</div></div></div>
-      <div id="code-area" style="display:none"><div class="stitle">Код игры</div><div class="code-badge" id="game-code-badge"></div><span class="online-tag">ОНЛАЙН</span></div>
-      <div class="stitle">Ходы</div><div class="moves-wrap" id="moves-list"></div>
-      <div class="stitle">Взяты белыми</div><div class="cap-row" id="cap-w"></div>
-      <div class="stitle" style="margin-top:6px">Взяты чёрными</div><div class="cap-row" id="cap-b"></div>
-      <div class="sidebar-btns">
-        <button class="btn btn-ghost btn-sm" onclick="undoMove()">↩ Отмена</button>
-        <button class="btn btn-ghost btn-sm" onclick="flipBoard()">⇅ Повернуть</button>
-        <button class="btn btn-ghost btn-sm" id="anim-btn" onclick="toggleAnim()">🎬 Анимация: вкл</button>
-        <button class="btn btn-gold btn-sm" onclick="resetAndLobby()">☰ Меню</button>
+    <aside class="gsidebar">
+      <div class="sidebar-head"><div><span class="eyebrow">MATCH ROOM</span><h2>Партия</h2></div><button class="icon-btn" onclick="openSettings()" aria-label="Настройки" title="Настройки">⚙</button></div>
+      <section class="sidebar-section players-section">
+        <div class="section-heading"><span>Игроки</span><span class="live-dot">LIVE</span></div>
+        <div class="player-banner" id="pb-black"><div class="pb-avatar black-av">♟</div><div class="player-meta"><div class="pb-name" id="pname-black">Чёрные</div><div class="pb-turn" id="pturn-black">Ожидание</div></div><span class="player-color">●</span></div>
+        <div class="player-banner active-turn" id="pb-white"><div class="pb-avatar white-av">♙</div><div class="player-meta"><div class="pb-name" id="pname-white">Белые</div><div class="pb-turn" id="pturn-white">Ваш ход</div></div><span class="player-color">●</span></div>
+        <div id="code-area" class="game-code-area" style="display:none"><div class="code-badge" id="game-code-badge"></div><span class="online-tag">ОНЛАЙН</span></div>
+      </section>
+      <section class="sidebar-section move-section">
+        <div class="section-heading"><span>Ходы партии</span><span class="move-counter" id="review-position">0 / 0</span></div>
+        <div class="moves-wrap" id="moves-list"><div class="moves-empty">Ходы появятся здесь</div></div>
+        <div class="review-controls"><button class="icon-btn" onclick="reviewStep(-1)" aria-label="Предыдущий ход">←</button><button class="btn btn-ghost btn-sm" onclick="returnToLive()">К текущей позиции</button><button class="icon-btn" onclick="reviewStep(1)" aria-label="Следующий ход">→</button></div>
+      </section>
+      <section class="sidebar-section captures-section">
+        <div class="section-heading"><span>Материал</span></div>
+        <div class="capture-line"><span>♙</span><div class="cap-row" id="cap-w"></div></div>
+        <div class="capture-line"><span>♟</span><div class="cap-row" id="cap-b"></div></div>
+      </section>
+      <div class="sidebar-actions">
+        <button class="btn btn-ghost" onclick="undoMove()">↶ Отменить ход</button>
+        <button class="btn btn-ghost" onclick="flipBoard()">⇄ Развернуть доску</button>
+        <button class="btn btn-gold" onclick="resetAndLobby()">⌂ В главное меню</button>
       </div>
-    </div>
+    </aside>
     <div class="gcenter">
+      <div class="clock-panel" id="clock-panel"><div class="clock-box" id="clock-white"><span>БЕЛЫЕ</span><strong id="clock-white-time">10:00</strong></div><button class="btn btn-ghost btn-sm" id="clock-settings" onclick="configureClock()">⏱ Время</button><div class="clock-box" id="clock-black"><span>ЧЁРНЫЕ</span><strong id="clock-black-time">10:00</strong></div></div>
       <div class="status-bar" id="status-bar"><div class="sdot w" id="sdot"></div><div class="stext" id="stext">Ход белых. Выберите фигуру.</div></div>
       <div class="board-area">
         <div class="eval-wrap"><div class="eval-lbl">♟</div><div class="eval-bar"><div class="eval-fill" id="eval-fill" style="height:50%"></div></div><div class="eval-lbl">♙</div></div>
@@ -131,10 +141,16 @@
         </div>
       </div>
     </div>
-    <div class="gsidebar right">
-      <div class="stitle">Фигуры</div><div class="scard"><div id="piece-guide"></div></div>
-      <div class="tip-box"><b>💡 Совет</b><span id="tip-text">Контролируйте центр с первых ходов — e4, d4 дают больше пространства.</span></div>
-      <div class="sidebar-btns"><button class="btn btn-ghost btn-sm" onclick="nextTip()">Другой совет</button></div>
+
+  </div>
+
+  <div class="modal-ov settings-ov" id="settings-modal" onclick="if(event.target===this)closeSettings()">
+    <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="settings-head"><div><span class="eyebrow">PERSONALIZE</span><h2 id="settings-title">Настройки партии</h2></div><button class="icon-btn" onclick="closeSettings()" aria-label="Закрыть">✕</button></div>
+      <div class="settings-option"><div><strong>Анимация ходов</strong><p>Плавное перемещение фигур по доске</p></div><label class="switch"><input id="setting-animation" type="checkbox" onchange="setAnimationSetting(this.checked)"><span></span></label></div>
+      <div class="settings-option"><div><strong>Обучающая панель</strong><p>Правила движения фигур и короткие советы</p></div><label class="switch"><input id="setting-training" type="checkbox" onchange="setTrainingSetting(this.checked)"><span></span></label></div>
+      <div id="training-panel" class="training-panel hidden"><div class="section-heading"><span>Шпаргалка по фигурам</span><button class="btn btn-ghost btn-sm" onclick="nextTip()">Другой совет</button></div><div id="piece-guide" class="piece-guide"></div><div class="tip-box"><b>Совет</b><span id="tip-text">Контролируйте центр — e4, d4, e5, d5 дают больше пространства.</span></div></div>
+      <div class="settings-footer"><button class="btn btn-gold" onclick="closeSettings()">Готово</button></div>
     </div>
   </div>
 
@@ -150,6 +166,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="chess.js?v=11"></script>
+<script src="chess.js?v=13"></script>
 </body>
 </html>

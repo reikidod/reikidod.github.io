@@ -27,8 +27,7 @@ try {
 } catch (e) {
   console.warn('Firebase не настроен');
   setTimeout(() => {
-    document.getElementById('auth').classList.remove('active');
-    document.getElementById('lobby').classList.add('active');
+    showScreen('lobby');
   }, 0);
 }
 
@@ -190,7 +189,10 @@ function copyCode() {
 }
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const next = document.getElementById(id);
+  next.classList.remove('active');
+  void next.offsetWidth;
+  next.classList.add('active');
   if (id === 'profile') loadProfile();
   if (id === 'lobby') updateUserHeader();
 }
@@ -205,6 +207,7 @@ function startLocal(m) {
   mode = m; showScreen('game'); initGame();
 }
 function resetAndLobby() {
+  stopClock();
   if (onlineGameRef) onlineGameRef.off();
   isOnline = false; showScreen('lobby');
 }
@@ -263,17 +266,37 @@ const INIT_BOARD = [
 const PIECE_VALUES = { P:1, N:3, B:3, R:5, Q:9, K:100 };
 
 let animEnabled = localStorage.getItem('chessAnim') !== '0';
+let trainingEnabled = localStorage.getItem('chessTraining') === '1';
 let animating = false;
-function toggleAnim() {
-  animEnabled = !animEnabled;
+function toggleAnim() { setAnimationSetting(!animEnabled); }
+function setAnimationSetting(enabled) {
+  animEnabled = !!enabled;
   localStorage.setItem('chessAnim', animEnabled ? '1' : '0');
-  const btn = document.getElementById('anim-btn');
-  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+  const input = document.getElementById('setting-animation');
+  if (input) input.checked = animEnabled;
   showToast(animEnabled ? 'Анимация ходов включена' : 'Анимация ходов выключена');
 }
+function setTrainingSetting(enabled) {
+  trainingEnabled = !!enabled;
+  localStorage.setItem('chessTraining', trainingEnabled ? '1' : '0');
+  const input = document.getElementById('setting-training');
+  const panel = document.getElementById('training-panel');
+  if (input) input.checked = trainingEnabled;
+  if (panel) panel.classList.toggle('hidden', !trainingEnabled);
+  if (trainingEnabled) buildPieceGuide();
+}
+function openSettings() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+  document.getElementById('setting-animation').checked = animEnabled;
+  document.getElementById('setting-training').checked = trainingEnabled;
+  document.getElementById('training-panel').classList.toggle('hidden', !trainingEnabled);
+  modal.classList.add('show');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('show'); }
 function updateAnimBtn() {
-  const btn = document.getElementById('anim-btn');
-  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+  const input = document.getElementById('setting-animation');
+  if (input) input.checked = animEnabled;
 }
 function getSquareEl(r, c) {
   const boardEl = document.getElementById('board');
@@ -328,12 +351,14 @@ function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
 
 function playMove(fr, fc, tr, tc, options) {
   options = options || {};
+  if (reviewIndex !== null && !options.remote) return false;
   if (animating) return false;
   const piece = board[fr] && board[fr][fc];
   if (!piece) return false;
 
   animatePieceMove(fr, fc, tr, tc, piece, function() {
     doMove(fr, fc, tr, tc, options.remote);
+    if (clockEnabled && !gameOver) renderClocks();
     if (!options.remote && isOnline) pushMoveOnline(fr, fc, tr, tc);
     renderBoard();
     updateStatus();
@@ -345,14 +370,20 @@ function playMove(fr, fc, tr, tc, options) {
 }
 
 let board, turn, sel, poss, history, capW, capB, flipped, mode, gameOver, lastMv;
+let clockEnabled = false, clockInitial = 600, clockRemaining = { w: 600, b: 600 }, clockInterval = null, reviewIndex = null;
 function initGame() {
+  stopClock();
+  reviewIndex = null;
+  clockRemaining = { w: clockInitial, b: clockInitial };
   board = INIT_BOARD.map(r => r.slice());
   turn = 'w'; sel = null; poss = []; history = []; capW = []; capB = [];
-  flipped = false; gameOver = false; lastMv = null; animating = false;
+  flipped = isOnline && myColor === 'b'; gameOver = false; lastMv = null; animating = false;
   document.getElementById('moves-list').innerHTML = '';
   document.getElementById('cap-w').innerHTML = '';
   document.getElementById('cap-b').innerHTML = '';
   renderBoard(); updateStatus(); updateEval(); updatePlayerBanners(); updateAnimBtn();
+  renderReviewPosition(); renderClocks();
+  if (clockEnabled) startClock();
 }
 function resetGame() { initGame(); }
 function renderBoard() {
@@ -381,9 +412,16 @@ function renderBoard() {
   (flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1]).forEach(n => {
     const s = document.createElement('span'); s.textContent = n; rcol.appendChild(s);
   });
+  const fileRow = document.querySelector('.file-row');
+  if (fileRow) fileRow.innerHTML = (flipped ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h']).map(file => '<span>' + file + '</span>').join('');
+  const sideLabels = document.querySelectorAll('.board-area .side-label');
+  if (sideLabels.length >= 2) {
+    sideLabels[0].textContent = flipped ? 'Белые' : 'Чёрные';
+    sideLabels[1].textContent = flipped ? 'Чёрные' : 'Белые';
+  }
 }
 function onSqClick(r, c) {
-  if (gameOver || animating) return;
+  if (gameOver || animating || reviewIndex !== null) return;
   if (isOnline && turn !== myColor) return;
   const piece = board[r][c];
   if (sel) {
@@ -432,10 +470,11 @@ function doMove(fr, fc, tr, tc, remote) {
   appendMoveToList(note);
   const opp = turn === 'w' ? 'b' : 'w';
   turn = opp;
+  if (clockEnabled && !remote) { renderClocks(); }
   const inChk = isInCheck(opp, board);
   const hasLgl = hasAnyLegal(opp, board);
   if (!hasLgl) {
-    gameOver = true;
+    gameOver = true; stopClock();
     setTimeout(() => {
       if (inChk) {
         showModal('Шах и мат!', 'Победили ' + (opp === 'w' ? 'Чёрные' : 'Белые') + '!');
@@ -458,18 +497,20 @@ function appendMoveToList(note) {
     const row = document.createElement('div');
     row.className = 'move-row';
     row.id = 'mr' + num;
-    row.innerHTML = '<span class="mn">' + num + '.</span><button class="mb">' + note + '</button>';
+    row.innerHTML = '<span class="mn">' + num + '.</span><button class="mb" type="button" onclick="reviewMove(' + history.length + ')">' + note + '</button>';
     list.appendChild(row);
   } else {
     const row = document.getElementById('mr' + num);
     if (row) {
       const b = document.createElement('button');
-      b.className = 'mb'; b.textContent = note; row.appendChild(b);
+      b.className = 'mb'; b.textContent = note; b.type = 'button'; b.onclick = () => reviewMove(history.length); row.appendChild(b);
     }
   }
   list.scrollTop = list.scrollHeight;
+  renderReviewPosition();
 }
 function undoMove() {
+  if (reviewIndex !== null) { showToast('Сначала вернитесь к текущей партии'); return; }
   if (!history.length || isOnline || animating) { if (isOnline) showToast('Отмена недоступна онлайн'); return; }
   const last = history.pop();
   board = last.snapshot; turn = last.piece[0]; gameOver = false;
@@ -596,6 +637,107 @@ function updateEval() {
   }
   document.getElementById('eval-fill').style.height = Math.max(5, Math.min(95, 50 + score*4)) + '%';
 }
+
+function formatClock(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function renderClocks() {
+  ['w','b'].forEach(color => {
+    const box = document.getElementById(color==='w'?'clock-white':'clock-black');
+    const value = document.getElementById(color==='w'?'clock-white-time':'clock-black-time');
+    if (!box || !value) return;
+    value.textContent = formatClock(clockRemaining[color]);
+    box.classList.toggle('active', !gameOver && turn===color && clockEnabled);
+    box.classList.toggle('low', clockRemaining[color] <= 20);
+  });
+  const panel = document.getElementById('clock-panel');
+  if (panel) panel.style.display = 'flex';
+}
+function stopClock() { if (clockInterval) clearInterval(clockInterval); clockInterval = null; }
+function startClock() {
+  stopClock();
+  if (!clockEnabled || gameOver || reviewIndex !== null) return;
+  let last = Date.now();
+  clockInterval = setInterval(() => {
+    const now = Date.now(), elapsed = (now-last)/1000; last=now;
+    if (gameOver || reviewIndex !== null) return;
+    clockRemaining[turn] = Math.max(0, clockRemaining[turn]-elapsed);
+    renderClocks();
+    if (clockRemaining[turn] <= 0) {
+      stopClock(); gameOver = true; updateStatus(); updatePlayerBanners();
+      showModal('Время вышло!', 'Победили ' + (turn==='w'?'Чёрные':'Белые') + '!');
+    }
+  }, 200);
+}
+function configureClock() {
+  const answer = prompt('Контроль времени в минутах (например, 3, 5, 10 или 15):', String(Math.round(clockInitial/60)));
+  if (answer === null) return;
+  const minutes = Number(answer);
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 180) { showToast('Введите число от 1 до 180'); return; }
+  clockInitial = Math.round(minutes*60); clockEnabled = true;
+  if (board) { clockRemaining={w:clockInitial,b:clockInitial}; renderClocks(); startClock(); }
+  showToast('Таймер установлен: '+minutes+' мин. на игрока');
+}
+function reviewMove(ply) {
+  if (!history.length) return;
+  reviewIndex = Math.max(0,Math.min(history.length,ply));
+  stopClock();
+  const liveTurn = turn;
+  board = reviewIndex===0 ? INIT_BOARD.map(r=>r.slice()) :
+    (reviewIndex<history.length ? history[reviewIndex].snapshot.map(r=>r.slice()) : board.map(r=>r.slice()));
+  if (reviewIndex===history.length) board = history[history.length-1].snapshot.map(r=>r.slice()), applyHistoryMoveToBoard(board, history[history.length-1]);
+  turn = reviewIndex%2===0 ? 'w' : 'b';
+  gameOver = false; sel=null; poss=[];
+  lastMv = reviewIndex ? {fr:history[reviewIndex-1].from[0],fc:history[reviewIndex-1].from[1],tr:history[reviewIndex-1].to[0],tc:history[reviewIndex-1].to[1]} : null;
+  renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewCaptures(); renderReviewPosition();
+}
+function applyHistoryMoveToBoard(target, entry) {
+  const [fr,fc]=entry.from, [tr,tc]=entry.to;
+  target[tr][tc]=entry.piece; target[fr][fc]=null;
+  if (entry.piece==='wP' && tr===0) target[tr][tc]='wQ';
+  if (entry.piece==='bP' && tr===7) target[tr][tc]='bQ';
+  if (entry.piece==='wK' && fc===4 && tc===6) { target[7][5]='wR'; target[7][7]=null; }
+  if (entry.piece==='wK' && fc===4 && tc===2) { target[7][3]='wR'; target[7][0]=null; }
+  if (entry.piece==='bK' && fc===4 && tc===6) { target[0][5]='bR'; target[0][7]=null; }
+  if (entry.piece==='bK' && fc===4 && tc===2) { target[0][3]='bR'; target[0][0]=null; }
+}
+function reviewStep(delta) {
+  const current = reviewIndex===null ? history.length : reviewIndex;
+  reviewMove(current+delta);
+}
+function returnToLive() {
+  if (reviewIndex===null) return;
+  reviewIndex=null;
+  if (history.length) {
+    const last=history[history.length-1];
+    board=last.snapshot.map(r=>r.slice()); applyHistoryMoveToBoard(board,last);
+    turn=last.piece[0]==='w'?'b':'w';
+    lastMv={fr:last.from[0],fc:last.from[1],tr:last.to[0],tc:last.to[1]};
+  } else { board=INIT_BOARD.map(r=>r.slice()); turn='w'; lastMv=null; }
+  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewCaptures(); renderReviewPosition();
+  if (clockEnabled) startClock();
+}
+function renderReviewCaptures() {
+  const white=document.getElementById('cap-w'), black=document.getElementById('cap-b');
+  if (!white || !black) return;
+  white.innerHTML=''; black.innerHTML=''; capW=[]; capB=[];
+  const count=reviewIndex===null?history.length:reviewIndex;
+  history.slice(0,count).forEach(entry=>{
+    if (!entry.target) return;
+    const capturer=entry.piece[0];
+    const holder=capturer==='w'?white:black;
+    const item=document.createElement('span'); item.innerHTML=svgPiece(entry.target); holder.appendChild(item);
+    (capturer==='w'?capW:capB).push(entry.target);
+  });
+}
+function renderReviewPosition() {
+  const label=document.getElementById('review-position');
+  if (label) label.textContent=(reviewIndex===null?history.length:reviewIndex)+' / '+history.length;
+  document.querySelectorAll('#moves-list .mb').forEach((button,index)=>button.classList.toggle('active',
+    reviewIndex!==null && index===reviewIndex-1));
+}
+
 function flipBoard() { if (animating) return; flipped = !flipped; renderBoard(); }
 function showModal(title, msg) {
   document.getElementById('m-title').textContent = title;
@@ -616,7 +758,8 @@ const TIPS = [
 let tipIdx = 0;
 function nextTip() {
   tipIdx = (tipIdx + 1) % TIPS.length;
-  document.getElementById('tip-text').textContent = TIPS[tipIdx];
+  const el = document.getElementById('tip-text');
+  if (el) el.textContent = TIPS[tipIdx];
 }
 buildPieceGuide();
 updateAnimBtn();
