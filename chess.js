@@ -128,19 +128,45 @@ async function updateDisplayName() {
 let currentCode = null, isOnline = false, myColor = null, onlineGameRef = null;
 function genCode() {
   const W = ['KING','ROOK','PAWN','WOLF','HAWK','BEAR','RUBY','IRON','NOVA','APEX'];
-  return W[Math.floor(Math.random()*W.length)] + '-' + (Math.floor(Math.random()*90)+10);
+  const bytes = new Uint32Array(1);
+  const random = window.crypto && window.crypto.getRandomValues
+    ? (window.crypto.getRandomValues(bytes), bytes[0] % 10000)
+    : Math.floor(Math.random() * 10000);
+  return W[Math.floor(Math.random()*W.length)] + '-' + String(random).padStart(4, '0');
 }
 async function createOnlineGame() {
   if (!firebaseReady) { showToast('Нужен Firebase'); return; }
-  currentCode = genCode(); myColor = 'w'; isOnline = true;
-  document.getElementById('wr-code').textContent = currentCode;
-  showScreen('waitroom');
-  onlineGameRef = db.ref('games/' + currentCode);
-  await onlineGameRef.set({ host: currentUser ? currentUser.displayName : 'Гость', status: 'waiting', turn: 'w', ts: Date.now() });
-  onlineGameRef.on('value', snap => {
-    const data = snap.val();
-    if (data && data.status === 'playing') { onlineGameRef.off(); startOnlineGame('w', data.guest || 'Гость'); }
-  });
+  const hostName = currentUser ? currentUser.displayName : 'Гость';
+  let createdRef = null;
+  try {
+    // Создание через transaction не позволяет затереть уже существующую комнату.
+    for (let attempt = 0; attempt < 8 && !createdRef; attempt++) {
+      const candidate = genCode();
+      const ref = db.ref('games/' + candidate);
+      const result = await ref.transaction(existing => existing === null
+        ? { host: hostName, status: 'waiting', turn: 'w', moveNo: 0, ts: Date.now() }
+        : undefined, undefined, false);
+      if (result.committed) {
+        currentCode = candidate;
+        createdRef = ref;
+      }
+    }
+    if (!createdRef) throw new Error('Не удалось подобрать свободный код. Попробуйте ещё раз.');
+    onlineGameRef = createdRef;
+    myColor = 'w'; isOnline = true;
+    document.getElementById('wr-code').textContent = currentCode;
+    showScreen('waitroom');
+    onlineGameRef.on('value', snap => {
+      const data = snap.val();
+      if (data && data.status === 'playing' && data.guest) {
+        onlineGameRef.off();
+        startOnlineGame('w', data.guest || 'Гость');
+      }
+    });
+  } catch (e) {
+    isOnline = false; currentCode = null; onlineGameRef = null;
+    showToast('Не удалось создать игру: ' + e.message, 4000);
+  }
 }
 async function joinGame() {
   const code = document.getElementById('join-input').value.trim().toUpperCase();
@@ -148,14 +174,24 @@ async function joinGame() {
   if (!firebaseReady) { showToast('Нужен Firebase'); return; }
   try {
     const ref = db.ref('games/' + code);
-    const snap = await ref.get();
-    if (!snap.exists()) { showToast('Игра не найдена'); return; }
-    const data = snap.val();
-    if (data.status !== 'waiting') { showToast('Игра уже началась'); return; }
-    await ref.update({ status: 'playing', guest: currentUser ? currentUser.displayName : 'Гость' });
+    // Атомарно резервируем место гостя: только один клиент сможет присоединиться.
+    const result = await ref.transaction(data => {
+      if (!data || data.status !== 'waiting' || data.guest) return;
+      data.status = 'playing';
+      data.guest = currentUser ? currentUser.displayName : 'Гость';
+      data.guestUid = currentUser ? currentUser.uid : null;
+      data.moveNo = Number(data.moveNo) || 0;
+      return data;
+    }, undefined, false);
+    if (!result.committed) {
+      const latest = result.snapshot && result.snapshot.val();
+      showToast(latest ? 'Игра уже началась или в ней есть соперник' : 'Игра не найдена');
+      return;
+    }
+    const data = result.snapshot.val();
     currentCode = code; myColor = 'b'; isOnline = true; onlineGameRef = ref;
     startOnlineGame('b', data.host || 'Хост');
-  } catch(e) { showToast('Ошибка: ' + e.message); }
+  } catch(e) { showToast('Ошибка подключения: ' + e.message, 4000); }
 }
 function startOnlineGame(myCol, opponentName) {
   myColor = myCol;
@@ -165,20 +201,35 @@ function startOnlineGame(myCol, opponentName) {
   document.getElementById('code-area').style.display = 'block';
   document.getElementById('game-code-badge').textContent = currentCode;
   mode = 'pvp'; showScreen('game'); initGame();
-  let lastRemoteTs = 0;
+  let lastRemoteSeq = 0;
   onlineGameRef.on('value', snap => {
     const data = snap.val();
     if (!data || !data.lastMove) return;
     const lm = data.lastMove;
-    if (lm.by === myColor) return;
-    if (lm.ts && lm.ts === lastRemoteTs) return;
-    lastRemoteTs = lm.ts || Date.now();
-    playMove(lm.fr, lm.fc, lm.tr, lm.tc, { remote: true });
+    const seq = Number(lm.seq) || 0;
+    if (lm.by === myColor || seq <= lastRemoteSeq) return;
+    // Принимаем только последовательный ход стороны, которой сейчас принадлежит очередь.
+    if (lm.by !== turn || !getLegal(lm.fr, lm.fc, board, turn).some(m => m[0] === lm.tr && m[1] === lm.tc)) {
+      showToast('Получен некорректный или несвоевременный ход. Синхронизация остановлена.', 4000);
+      return;
+    }
+    if (playMove(lm.fr, lm.fc, lm.tr, lm.tc, { remote: true })) lastRemoteSeq = seq;
   });
 }
 function pushMoveOnline(fr, fc, tr, tc) {
   if (!isOnline || !onlineGameRef) return;
-  onlineGameRef.update({ lastMove: { fr, fc, tr, tc, by: myColor, ts: Date.now() }, turn: myColor === 'w' ? 'b' : 'w' });
+  // Транзакция сериализует ходы и не даёт двум клиентам записать ход в одну очередь.
+  onlineGameRef.transaction(data => {
+    if (!data || data.status !== 'playing' || data.turn !== myColor) return;
+    const seq = (Number(data.moveNo) || 0) + 1;
+    data.lastMove = { fr, fc, tr, tc, by: myColor, seq, ts: Date.now() };
+    data.moveNo = seq;
+    data.turn = myColor === 'w' ? 'b' : 'w';
+    return data;
+  }, (error, committed) => {
+    if (error) showToast('Не удалось отправить ход: ' + error.message, 4000);
+    else if (!committed) showToast('Ход не принят: сейчас очередь соперника.', 3500);
+  }, false);
 }
 async function cancelOnlineGame() {
   if (onlineGameRef) { onlineGameRef.off(); await onlineGameRef.remove(); onlineGameRef = null; }
