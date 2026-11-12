@@ -9,7 +9,7 @@
           ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)"
         },
         "guestUid": {
-          ".validate": "!newData.exists() || newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)"
+          ".validate": "(!data.exists() && newData.val() === auth.uid) || (data.exists() && newData.val() === data.val())"
         },
         "status": {
           ".validate": "(!data.exists() && newData.val() === 'waiting') || data.val() === newData.val() || (data.val() === 'waiting' && newData.val() === 'playing') || (data.val() === 'playing' && newData.val() === 'finished')"
@@ -21,6 +21,7 @@
           ".validate": "newData.isNumber() && (!data.exists() || newData.val() >= data.val())"
         },
         "moves": {
+          ".validate": "newData.numChildren() >= data.numChildren()",
           "$seq": {
             ".validate": "newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && (newData.child('by').val() === 'w' || newData.child('by').val() === 'b')"
           }
