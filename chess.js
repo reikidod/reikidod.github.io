@@ -190,7 +190,10 @@ function copyCode() {
 }
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const next = document.getElementById(id);
+  next.classList.remove('active');
+  void next.offsetWidth;
+  next.classList.add('active');
   if (id === 'profile') loadProfile();
   if (id === 'lobby') updateUserHeader();
 }
@@ -205,6 +208,7 @@ function startLocal(m) {
   mode = m; showScreen('game'); initGame();
 }
 function resetAndLobby() {
+  stopClock();
   if (onlineGameRef) onlineGameRef.off();
   isOnline = false; showScreen('lobby');
 }
@@ -328,12 +332,14 @@ function animatePieceMove(fr, fc, tr, tc, pieceCode, onDone) {
 
 function playMove(fr, fc, tr, tc, options) {
   options = options || {};
+  if (reviewIndex !== null && !options.remote) return false;
   if (animating) return false;
   const piece = board[fr] && board[fr][fc];
   if (!piece) return false;
 
   animatePieceMove(fr, fc, tr, tc, piece, function() {
     doMove(fr, fc, tr, tc, options.remote);
+    if (clockEnabled && !gameOver) renderClocks();
     if (!options.remote && isOnline) pushMoveOnline(fr, fc, tr, tc);
     renderBoard();
     updateStatus();
@@ -345,7 +351,11 @@ function playMove(fr, fc, tr, tc, options) {
 }
 
 let board, turn, sel, poss, history, capW, capB, flipped, mode, gameOver, lastMv;
+let clockEnabled = false, clockInitial = 600, clockRemaining = { w: 600, b: 600 }, clockInterval = null, reviewIndex = null;
 function initGame() {
+  stopClock();
+  reviewIndex = null;
+  clockRemaining = { w: clockInitial, b: clockInitial };
   board = INIT_BOARD.map(r => r.slice());
   turn = 'w'; sel = null; poss = []; history = []; capW = []; capB = [];
   flipped = false; gameOver = false; lastMv = null; animating = false;
@@ -353,6 +363,8 @@ function initGame() {
   document.getElementById('cap-w').innerHTML = '';
   document.getElementById('cap-b').innerHTML = '';
   renderBoard(); updateStatus(); updateEval(); updatePlayerBanners(); updateAnimBtn();
+  renderReviewPosition(); renderClocks();
+  if (clockEnabled) startClock();
 }
 function resetGame() { initGame(); }
 function renderBoard() {
@@ -383,7 +395,7 @@ function renderBoard() {
   });
 }
 function onSqClick(r, c) {
-  if (gameOver || animating) return;
+  if (gameOver || animating || reviewIndex !== null) return;
   if (isOnline && turn !== myColor) return;
   const piece = board[r][c];
   if (sel) {
@@ -432,10 +444,11 @@ function doMove(fr, fc, tr, tc, remote) {
   appendMoveToList(note);
   const opp = turn === 'w' ? 'b' : 'w';
   turn = opp;
+  if (clockEnabled && !remote) { renderClocks(); }
   const inChk = isInCheck(opp, board);
   const hasLgl = hasAnyLegal(opp, board);
   if (!hasLgl) {
-    gameOver = true;
+    gameOver = true; stopClock();
     setTimeout(() => {
       if (inChk) {
         showModal('Шах и мат!', 'Победили ' + (opp === 'w' ? 'Чёрные' : 'Белые') + '!');
@@ -458,16 +471,17 @@ function appendMoveToList(note) {
     const row = document.createElement('div');
     row.className = 'move-row';
     row.id = 'mr' + num;
-    row.innerHTML = '<span class="mn">' + num + '.</span><button class="mb">' + note + '</button>';
+    row.innerHTML = '<span class="mn">' + num + '.</span><button class="mb" type="button" onclick="reviewMove(' + history.length + ')">' + note + '</button>';
     list.appendChild(row);
   } else {
     const row = document.getElementById('mr' + num);
     if (row) {
       const b = document.createElement('button');
-      b.className = 'mb'; b.textContent = note; row.appendChild(b);
+      b.className = 'mb'; b.textContent = note; b.type = 'button'; b.onclick = () => reviewMove(history.length); row.appendChild(b);
     }
   }
   list.scrollTop = list.scrollHeight;
+  renderReviewPosition();
 }
 function undoMove() {
   if (!history.length || isOnline || animating) { if (isOnline) showToast('Отмена недоступна онлайн'); return; }
@@ -596,6 +610,90 @@ function updateEval() {
   }
   document.getElementById('eval-fill').style.height = Math.max(5, Math.min(95, 50 + score*4)) + '%';
 }
+
+function formatClock(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function renderClocks() {
+  ['w','b'].forEach(color => {
+    const box = document.getElementById(color==='w'?'clock-white':'clock-black');
+    const value = document.getElementById(color==='w'?'clock-white-time':'clock-black-time');
+    if (!box || !value) return;
+    value.textContent = formatClock(clockRemaining[color]);
+    box.classList.toggle('active', !gameOver && turn===color && clockEnabled);
+    box.classList.toggle('low', clockRemaining[color] <= 20);
+  });
+  const panel = document.getElementById('clock-panel');
+  if (panel) panel.style.display = clockEnabled ? 'flex' : 'none';
+}
+function stopClock() { if (clockInterval) clearInterval(clockInterval); clockInterval = null; }
+function startClock() {
+  stopClock();
+  if (!clockEnabled || gameOver || reviewIndex !== null) return;
+  let last = Date.now();
+  clockInterval = setInterval(() => {
+    const now = Date.now(), elapsed = (now-last)/1000; last=now;
+    if (gameOver || reviewIndex !== null) return;
+    clockRemaining[turn] = Math.max(0, clockRemaining[turn]-elapsed);
+    renderClocks();
+    if (clockRemaining[turn] <= 0) {
+      stopClock(); gameOver = true; updateStatus(); updatePlayerBanners();
+      showModal('Время вышло!', 'Победили ' + (turn==='w'?'Чёрные':'Белые') + '!');
+    }
+  }, 200);
+}
+function configureClock() {
+  const answer = prompt('Контроль времени в минутах (например, 3, 5, 10 или 15):', String(Math.round(clockInitial/60)));
+  if (answer === null) return;
+  const minutes = Number(answer);
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 180) { showToast('Введите число от 1 до 180'); return; }
+  clockInitial = Math.round(minutes*60); clockEnabled = true;
+  if (board) { clockRemaining={w:clockInitial,b:clockInitial}; renderClocks(); startClock(); }
+  showToast('Таймер установлен: '+minutes+' мин. на игрока');
+}
+function reviewMove(ply) {
+  if (!history.length) return;
+  reviewIndex = Math.max(0,Math.min(history.length,ply));
+  stopClock();
+  const liveTurn = turn;
+  board = reviewIndex===0 ? INIT_BOARD.map(r=>r.slice()) :
+    (reviewIndex<history.length ? history[reviewIndex].snapshot.map(r=>r.slice()) : board.map(r=>r.slice()));
+  if (reviewIndex===history.length) board = history[history.length-1].snapshot.map(r=>r.slice()), applyHistoryMoveToBoard(board, history[history.length-1]);
+  turn = reviewIndex%2===0 ? 'w' : 'b';
+  gameOver = false; sel=null; poss=[];
+  lastMv = reviewIndex ? {fr:history[reviewIndex-1].from[0],fc:history[reviewIndex-1].from[1],tr:history[reviewIndex-1].to[0],tc:history[reviewIndex-1].to[1]} : null;
+  renderBoard(); updateStatus(); updatePlayerBanners(); renderReviewPosition();
+}
+function applyHistoryMoveToBoard(target, entry) {
+  const [fr,fc]=entry.from, [tr,tc]=entry.to;
+  target[tr][tc]=entry.piece; target[fr][fc]=null;
+  if (entry.piece==='wP' && tr===0) target[tr][tc]='wQ';
+  if (entry.piece==='bP' && tr===7) target[tr][tc]='bQ';
+}
+function reviewStep(delta) {
+  const current = reviewIndex===null ? history.length : reviewIndex;
+  reviewMove(current+delta);
+}
+function returnToLive() {
+  if (reviewIndex===null) return;
+  reviewIndex=null;
+  if (history.length) {
+    const last=history[history.length-1];
+    board=last.snapshot.map(r=>r.slice()); applyHistoryMoveToBoard(board,last);
+    turn=last.piece[0]==='w'?'b':'w';
+    lastMv={fr:last.from[0],fc:last.from[1],tr:last.to[0],tc:last.to[1]};
+  } else { board=INIT_BOARD.map(r=>r.slice()); turn='w'; lastMv=null; }
+  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); renderReviewPosition();
+  if (clockEnabled) startClock();
+}
+function renderReviewPosition() {
+  const label=document.getElementById('review-position');
+  if (label) label.textContent=(reviewIndex===null?history.length:reviewIndex)+' / '+history.length;
+  document.querySelectorAll('#moves-list .mb').forEach((button,index)=>button.classList.toggle('active',
+    reviewIndex!==null && index===reviewIndex-1));
+}
+
 function flipBoard() { if (animating) return; flipped = !flipped; renderBoard(); }
 function showModal(title, msg) {
   document.getElementById('m-title').textContent = title;
