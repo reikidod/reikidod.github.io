@@ -63,7 +63,17 @@ async function doRegister() {
     });
   } catch (e) { errEl.textContent = firebaseErrorRu(e.code); }
 }
-function doGuest() { currentUser = null; showScreen('lobby'); updateUserHeader(); }
+async function doGuest() {
+  if (auth && !auth.currentUser) {
+    try { await auth.signInAnonymously(); }
+    catch (e) { showToast('Не удалось войти как гость: ' + e.message, 4500); return; }
+  }
+  if (auth && auth.currentUser) {
+    currentUser = { uid: auth.currentUser.uid, displayName: auth.currentUser.displayName || 'Гость', email: null };
+  } else currentUser = null;
+  showScreen('lobby'); updateUserHeader();
+  resumeLastOnlineGame();
+}
 async function doLogout() {
   if (auth) await auth.signOut();
   currentUser = null; updateUserHeader(); showScreen('auth');
@@ -71,6 +81,7 @@ async function doLogout() {
 function onUserLoggedIn() {
   updateUserHeader();
   if (document.getElementById('auth').classList.contains('active')) showScreen('lobby');
+  resumeLastOnlineGame();
 }
 function updateUserHeader() {
   const nameEl = document.getElementById('user-name-hdr');
@@ -126,38 +137,189 @@ async function updateDisplayName() {
 }
 
 let currentCode = null, isOnline = false, myColor = null, onlineGameRef = null;
+let lastAppliedOnlineSeq = 0;
+let onlineConnectionRef = null;
+let onlineConnected = true;
+let isResumingOnlineGame = false;
+function getOnlineClientId() {
+  const key = 'chessOnlineClientId';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    const bytes = new Uint8Array(18);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
 function genCode() {
   const W = ['KING','ROOK','PAWN','WOLF','HAWK','BEAR','RUBY','IRON','NOVA','APEX'];
-  return W[Math.floor(Math.random()*W.length)] + '-' + (Math.floor(Math.random()*90)+10);
+  const bytes = new Uint32Array(1);
+  const random = window.crypto && window.crypto.getRandomValues
+    ? (window.crypto.getRandomValues(bytes), bytes[0] % 100000)
+    : Math.floor(Math.random() * 100000);
+  return W[Math.floor(Math.random()*W.length)] + '-' + String(random).padStart(5, '0');
+}
+function saveActiveOnlineGame(code, color) {
+  localStorage.setItem('chessActiveOnlineGame', JSON.stringify({ code, color, savedAt: Date.now() }));
+}
+function clearActiveOnlineGame() {
+  localStorage.removeItem('chessActiveOnlineGame');
+}
+async function resumeLastOnlineGame() {
+  if (!firebaseReady || isOnline || isResumingOnlineGame) return;
+  isResumingOnlineGame = true;
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem('chessActiveOnlineGame') || 'null'); }
+  catch (e) { clearActiveOnlineGame(); isResumingOnlineGame = false; return; }
+  if (!saved || !saved.code) { isResumingOnlineGame = false; return; }
+  try {
+    const ref = db.ref('games/' + saved.code);
+    const snap = await ref.get();
+    const data = snap.val();
+    const clientId = getOnlineClientId();
+    const uid = auth && auth.currentUser ? auth.currentUser.uid : null;
+    if (!data || !uid || (data.hostUid !== uid && data.guestUid !== uid)) {
+      clearActiveOnlineGame();
+      return;
+    }
+    const color = data.hostUid === uid ? 'w' : 'b';
+    currentCode = saved.code; myColor = color; isOnline = true; onlineGameRef = ref;
+    if (data.status === 'playing') {
+      const opponent = color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост');
+      startOnlineGame(color, opponent, data);
+      showToast('Партия восстановлена', 3000);
+    } else if (data.status === 'waiting' && color === 'w') {
+      document.getElementById('wr-code').textContent = currentCode;
+      showScreen('waitroom');
+      onlineGameRef.on('value', roomSnap => {
+        const latest = roomSnap.val();
+        if (latest && latest.status === 'playing' && latest.guest) {
+          onlineGameRef.off('value');
+          startOnlineGame('w', latest.guest, latest);
+        }
+      });
+      showToast('Ожидание соперника восстановлено', 3000);
+    } else {
+      isOnline = false; onlineGameRef = null; clearActiveOnlineGame();
+    }
+  } catch (e) {
+    showToast('Не удалось восстановить партию: ' + e.message, 4000);
+  } finally {
+    isResumingOnlineGame = false;
+  }
 }
 async function createOnlineGame() {
-  if (!firebaseReady) { showToast('Нужен Firebase'); return; }
-  currentCode = genCode(); myColor = 'w'; isOnline = true;
-  document.getElementById('wr-code').textContent = currentCode;
-  showScreen('waitroom');
-  onlineGameRef = db.ref('games/' + currentCode);
-  await onlineGameRef.set({ host: currentUser ? currentUser.displayName : 'Гость', status: 'waiting', turn: 'w', ts: Date.now() });
-  onlineGameRef.on('value', snap => {
-    const data = snap.val();
-    if (data && data.status === 'playing') { onlineGameRef.off(); startOnlineGame('w', data.guest || 'Гость'); }
-  });
+  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
+  const hostName = currentUser ? currentUser.displayName : 'Гость';
+  const clientId = getOnlineClientId();
+  let createdRef = null;
+  try {
+    for (let attempt = 0; attempt < 8 && !createdRef; attempt++) {
+      const candidate = genCode();
+      const ref = db.ref('games/' + candidate);
+      const result = await ref.transaction(existing => existing === null
+        ? { host: hostName, hostUid: currentUser && currentUser.uid, hostClientId: clientId, status: 'waiting', turn: 'w', moveNo: 0, moves: {}, ts: Date.now(), updatedAt: Date.now() }
+        : undefined, undefined, false);
+      if (result.committed) { currentCode = candidate; createdRef = ref; }
+    }
+    if (!createdRef) throw new Error('Не удалось подобрать свободный код. Попробуйте ещё раз.');
+    onlineGameRef = createdRef;
+    myColor = 'w'; isOnline = true;
+    saveActiveOnlineGame(currentCode, 'w');
+    document.getElementById('wr-code').textContent = currentCode;
+    showScreen('waitroom');
+    onlineGameRef.on('value', snap => {
+      const data = snap.val();
+      if (data && data.status === 'playing' && data.guest) {
+        onlineGameRef.off('value');
+        startOnlineGame('w', data.guest || 'Гость', data);
+      } else if (data && data.status === 'finished') {
+        showToast('Партия завершена', 3500);
+      }
+    });
+  } catch (e) {
+    isOnline = false; currentCode = null; onlineGameRef = null;
+    showToast('Не удалось создать игру: ' + e.message, 4000);
+  }
 }
 async function joinGame() {
   const code = document.getElementById('join-input').value.trim().toUpperCase();
   if (!code) { showToast('Введите код'); return; }
-  if (!firebaseReady) { showToast('Нужен Firebase'); return; }
+  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
   try {
     const ref = db.ref('games/' + code);
-    const snap = await ref.get();
-    if (!snap.exists()) { showToast('Игра не найдена'); return; }
-    const data = snap.val();
-    if (data.status !== 'waiting') { showToast('Игра уже началась'); return; }
-    await ref.update({ status: 'playing', guest: currentUser ? currentUser.displayName : 'Гость' });
-    currentCode = code; myColor = 'b'; isOnline = true; onlineGameRef = ref;
-    startOnlineGame('b', data.host || 'Хост');
-  } catch(e) { showToast('Ошибка: ' + e.message); }
+    const clientId = getOnlineClientId();
+    const playerName = currentUser ? currentUser.displayName : 'Гость';
+    const result = await ref.transaction(data => {
+      if (!data) return;
+      if (data.status === 'waiting' && !data.guest) {
+        data.status = 'playing';
+        data.guest = playerName;
+        data.guestClientId = clientId;
+        data.guestUid = currentUser && currentUser.uid;
+        data.moveNo = Number(data.moveNo) || 0;
+        data.moves = data.moves || {};
+        data.updatedAt = Date.now();
+        return data;
+      }
+      // Повторный вход разрешён только тому же браузеру/профилю, который занял место.
+      if (data.status === 'playing' && data.hostUid === currentUser.uid) return data;
+      if (data.status === 'playing' && data.guestUid === currentUser.uid) return data;
+      return;
+    }, undefined, false);
+    if (!result.committed) {
+      const latest = result.snapshot && result.snapshot.val();
+      showToast(latest ? 'Комната занята или код принадлежит другой партии' : 'Игра не найдена');
+      return;
+    }
+    const data = result.snapshot.val();
+    const color = data.hostUid === currentUser.uid ? 'w' : 'b';
+    currentCode = code; myColor = color; isOnline = true; onlineGameRef = ref;
+    saveActiveOnlineGame(code, color);
+    startOnlineGame(color, color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост'), data);
+  } catch(e) { showToast('Ошибка подключения: ' + e.message, 4000); }
 }
-function startOnlineGame(myCol, opponentName) {
+function applyOnlineSnapshot(data, replaying) {
+  if (!data) return;
+  const moves = data.moves && typeof data.moves === 'object' ? data.moves : {};
+  const entries = Object.keys(moves).map(key => moves[key]).filter(Boolean)
+    .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
+  // Поддержка комнат, созданных старой версией клиента.
+  if (!entries.length && data.lastMove && Number(data.lastMove.seq) > 0) entries.push(data.lastMove);
+  let changed = false;
+  let invalidSequence = false;
+  const previousAnimation = animEnabled;
+  if (replaying) animEnabled = false;
+  try {
+    entries.forEach(lm => {
+      if (invalidSequence) return;
+      const seq = Number(lm.seq) || 0;
+      if (!seq || seq <= lastAppliedOnlineSeq) return;
+      if (!replaying && lm.by === myColor) {
+        lastAppliedOnlineSeq = seq;
+        return;
+      }
+      if (seq !== lastAppliedOnlineSeq + 1 || lm.by !== turn ||
+          !getLegal(lm.fr, lm.fc, board, turn).some(m => m[0] === lm.tr && m[1] === lm.tc)) {
+        invalidSequence = true;
+        showToast('Не удалось восстановить партию: обнаружена ошибка последовательности ходов.', 5000);
+        return;
+      }
+      doMove(lm.fr, lm.fc, lm.tr, lm.tc, true);
+      lastAppliedOnlineSeq = seq;
+      changed = true;
+    });
+  } finally {
+    if (replaying) animEnabled = previousAnimation;
+  }
+  if (changed) {
+    renderBoard(); updateStatus(); updateEval(); updatePlayerBanners();
+    renderReviewCaptures(); renderReviewPosition();
+  }
+}
+function startOnlineGame(myCol, opponentName, initialData) {
   myColor = myCol;
   const myName = currentUser ? currentUser.displayName : 'Вы';
   document.getElementById('pname-white').textContent = myCol === 'w' ? myName : opponentName;
@@ -165,24 +327,75 @@ function startOnlineGame(myCol, opponentName) {
   document.getElementById('code-area').style.display = 'block';
   document.getElementById('game-code-badge').textContent = currentCode;
   mode = 'pvp'; showScreen('game'); initGame();
-  let lastRemoteTs = 0;
+  onlineConnected = false;
+  lastAppliedOnlineSeq = 0;
+  // При новом открытии страницы проигрываем сохранённую историю с начальной позиции.
+  applyOnlineSnapshot(initialData || {}, true);
+  onlineGameRef.off('value');
   onlineGameRef.on('value', snap => {
     const data = snap.val();
-    if (!data || !data.lastMove) return;
-    const lm = data.lastMove;
-    if (lm.by === myColor) return;
-    if (lm.ts && lm.ts === lastRemoteTs) return;
-    lastRemoteTs = lm.ts || Date.now();
-    playMove(lm.fr, lm.fc, lm.tr, lm.tc, { remote: true });
+    if (!data) {
+      showToast('Комната больше не найдена.', 4000);
+      return;
+    }
+    if (data.status === 'finished') {
+      showToast('Партия завершена', 3500);
+      return;
+    }
+    applyOnlineSnapshot(data, false);
   });
+  if (onlineConnectionRef) onlineConnectionRef.off();
+  onlineConnectionRef = db.ref('.info/connected');
+  onlineConnectionRef.on('value', snap => {
+    const connected = snap.val() === true;
+    onlineConnected = connected;
+    const status = document.getElementById('stext');
+    if (!connected) {
+      showToast('Соединение потеряно. Партия сохранена, ждём переподключения…', 5000);
+      if (status) status.textContent = 'Нет соединения — ожидаем переподключения';
+    } else {
+      if (status && isOnline) status.textContent = turn === myColor ? 'Ваш ход. Выберите фигуру.' : 'Ход соперника. Ожидайте.';
+      showToast('Соединение с сервером восстановлено', 2500);
+    }
+  });
+}
+function restoreOnlinePosition(data) {
+  if (!data) return;
+  stopClock();
+  initGame();
+  lastAppliedOnlineSeq = 0;
+  applyOnlineSnapshot(data, true);
 }
 function pushMoveOnline(fr, fc, tr, tc) {
   if (!isOnline || !onlineGameRef) return;
-  onlineGameRef.update({ lastMove: { fr, fc, tr, tc, by: myColor, ts: Date.now() }, turn: myColor === 'w' ? 'b' : 'w' });
+  onlineGameRef.transaction(data => {
+    if (!data || data.status !== 'playing' || data.turn !== myColor) return;
+    const seq = (Number(data.moveNo) || 0) + 1;
+    const move = { fr, fc, tr, tc, by: myColor, seq, ts: Date.now() };
+    data.moves = data.moves || {};
+    data.moves[seq] = move;
+    data.lastMove = move;
+    data.moveNo = seq;
+    data.turn = myColor === 'w' ? 'b' : 'w';
+    data.updatedAt = Date.now();
+    return data;
+  }, (error, committed, snapshot) => {
+    if (error || !committed) {
+      showToast(error ? 'Не удалось отправить ход: ' + error.message : 'Ход не принят сервером. Позиция синхронизируется.', 4500);
+      const latest = snapshot && snapshot.val();
+      if (latest) restoreOnlinePosition(latest);
+      else onlineGameRef.get().then(s => restoreOnlinePosition(s.val())).catch(() => {
+        showToast('Не удалось восстановить позицию. Переподключитесь к партии по коду.', 5000);
+      });
+    } else {
+      lastAppliedOnlineSeq = Math.max(lastAppliedOnlineSeq, history.length);
+    }
+  }, false);
 }
 async function cancelOnlineGame() {
   if (onlineGameRef) { onlineGameRef.off(); await onlineGameRef.remove(); onlineGameRef = null; }
-  isOnline = false; currentCode = null; showScreen('lobby');
+  if (onlineConnectionRef) { onlineConnectionRef.off(); onlineConnectionRef = null; }
+  isOnline = false; currentCode = null; clearActiveOnlineGame(); showScreen('lobby');
 }
 function copyCode() {
   navigator.clipboard.writeText(document.getElementById('wr-code').textContent).then(() => showToast('Код скопирован'));
@@ -209,6 +422,7 @@ function startLocal(m) {
 function resetAndLobby() {
   stopClock();
   if (onlineGameRef) onlineGameRef.off();
+  if (onlineConnectionRef) { onlineConnectionRef.off(); onlineConnectionRef = null; }
   isOnline = false; showScreen('lobby');
 }
 let toastTimer = null;
@@ -422,6 +636,7 @@ function renderBoard() {
 }
 function onSqClick(r, c) {
   if (gameOver || animating || reviewIndex !== null) return;
+  if (isOnline && !onlineConnected) { showToast('Нет соединения. Дождитесь переподключения.'); return; }
   if (isOnline && turn !== myColor) return;
   const piece = board[r][c];
   if (sel) {

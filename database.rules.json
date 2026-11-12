@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "games": {
+      "$room": {
+        ".read": "auth != null && (data.child('status').val() === 'waiting' || data.child('hostUid').val() === auth.uid || data.child('guestUid').val() === auth.uid)",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || data.child('hostUid').val() === auth.uid || data.child('guestUid').val() === auth.uid || (data.child('status').val() === 'waiting' && !data.child('guestUid').exists() && newData.child('guestUid').val() === auth.uid))",
+        ".validate": "newData.hasChildren(['host', 'hostUid', 'status', 'turn', 'moveNo', 'moves'])",
+        "hostUid": {
+          ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)"
+        },
+        "guestUid": {
+          ".validate": "(!data.exists() && newData.val() === auth.uid) || (data.exists() && newData.val() === data.val())"
+        },
+        "status": {
+          ".validate": "(!data.exists() && newData.val() === 'waiting') || data.val() === newData.val() || (data.val() === 'waiting' && newData.val() === 'playing') || (data.val() === 'playing' && newData.val() === 'finished')"
+        },
+        "turn": {
+          ".validate": "newData.val() === 'w' || newData.val() === 'b'"
+        },
+        "moveNo": {
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() >= data.val())"
+        },
+        "moves": {
+          "$seq": {
+            ".validate": "newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && (newData.child('by').val() === 'w' || newData.child('by').val() === 'b')"
+          }
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
