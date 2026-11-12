@@ -483,6 +483,7 @@ function appendMoveToList(note) {
   renderReviewPosition();
 }
 function undoMove() {
+  if (reviewIndex !== null) { showToast('Сначала вернитесь к текущей партии'); return; }
   if (!history.length || isOnline || animating) { if (isOnline) showToast('Отмена недоступна онлайн'); return; }
   const last = history.pop();
   board = last.snapshot; turn = last.piece[0]; gameOver = false;
@@ -662,7 +663,7 @@ function reviewMove(ply) {
   turn = reviewIndex%2===0 ? 'w' : 'b';
   gameOver = false; sel=null; poss=[];
   lastMv = reviewIndex ? {fr:history[reviewIndex-1].from[0],fc:history[reviewIndex-1].from[1],tr:history[reviewIndex-1].to[0],tc:history[reviewIndex-1].to[1]} : null;
-  renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewPosition();
+  renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewCaptures(); renderReviewPosition();
 }
 function applyHistoryMoveToBoard(target, entry) {
   const [fr,fc]=entry.from, [tr,tc]=entry.to;
@@ -687,8 +688,21 @@ function returnToLive() {
     turn=last.piece[0]==='w'?'b':'w';
     lastMv={fr:last.from[0],fc:last.from[1],tr:last.to[0],tc:last.to[1]};
   } else { board=INIT_BOARD.map(r=>r.slice()); turn='w'; lastMv=null; }
-  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewPosition();
+  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewCaptures(); renderReviewPosition();
   if (clockEnabled) startClock();
+}
+function renderReviewCaptures() {
+  const white=document.getElementById('cap-w'), black=document.getElementById('cap-b');
+  if (!white || !black) return;
+  white.innerHTML=''; black.innerHTML=''; capW=[]; capB=[];
+  const count=reviewIndex===null?history.length:reviewIndex;
+  history.slice(0,count).forEach(entry=>{
+    if (!entry.target) return;
+    const capturer=entry.piece[0];
+    const holder=capturer==='w'?white:black;
+    const item=document.createElement('span'); item.innerHTML=svgPiece(entry.target); holder.appendChild(item);
+    (capturer==='w'?capW:capB).push(entry.target);
+  });
 }
 function renderReviewPosition() {
   const label=document.getElementById('review-position');
