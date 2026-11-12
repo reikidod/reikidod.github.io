@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Шахматный Клуб — Играй · Учись · Соревнуйся</title>
+  <title>Шахматный Клуб — Шахматы онлайн</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="favicon.svg">
   <meta name="theme-color" content="#0f0e0c">
@@ -17,7 +17,7 @@
 
   <div class="screen active" id="auth">
     <div class="auth-inner">
-      <div class="lobby-logo">♟ Шахматный Клуб<sub>Играй · Учись · Соревнуйся</sub></div>
+      <div class="lobby-logo">♟ Шахматный Клуб<sub>Играй · Соревнуйся</sub></div>
       <div class="auth-tabs">
         <button class="auth-tab active" onclick="switchAuthTab('login')">Войти</button>
         <button class="auth-tab" onclick="switchAuthTab('register')">Регистрация</button>
@@ -109,7 +109,8 @@
       <div class="player-banner" id="pb-black"><div class="pb-avatar black-av">♟</div><div><div class="pb-name" id="pname-black">Чёрные</div><div class="pb-turn" id="pturn-black">Ваш ход</div></div></div>
       <div class="player-banner active-turn" id="pb-white"><div class="pb-avatar white-av">♙</div><div><div class="pb-name" id="pname-white">Белые</div><div class="pb-turn" id="pturn-white">Ваш ход</div></div></div>
       <div id="code-area" style="display:none"><div class="stitle">Код игры</div><div class="code-badge" id="game-code-badge"></div><span class="online-tag">ОНЛАЙН</span></div>
-      <div class="stitle">Ходы</div><div class="moves-wrap" id="moves-list"></div>
+      <div class="stitle">История ходов</div><div class="moves-wrap" id="moves-list"></div>
+      <div class="review-controls"><button class="btn btn-ghost btn-sm" onclick="reviewStep(-1)" aria-label="Предыдущий ход">←</button><span id="review-position">0 / 0</span><button class="btn btn-ghost btn-sm" onclick="reviewStep(1)" aria-label="Следующий ход">→</button><button class="btn btn-ghost btn-sm" onclick="returnToLive()">К партии</button></div>
       <div class="stitle">Взяты белыми</div><div class="cap-row" id="cap-w"></div>
       <div class="stitle" style="margin-top:6px">Взяты чёрными</div><div class="cap-row" id="cap-b"></div>
       <div class="sidebar-btns">
@@ -120,6 +121,7 @@
       </div>
     </div>
     <div class="gcenter">
+      <div class="clock-panel" id="clock-panel"><div class="clock-box" id="clock-white"><span>БЕЛЫЕ</span><strong id="clock-white-time">10:00</strong></div><button class="btn btn-ghost btn-sm" id="clock-settings" onclick="configureClock()">⏱ Время</button><div class="clock-box" id="clock-black"><span>ЧЁРНЫЕ</span><strong id="clock-black-time">10:00</strong></div></div>
       <div class="status-bar" id="status-bar"><div class="sdot w" id="sdot"></div><div class="stext" id="stext">Ход белых. Выберите фигуру.</div></div>
       <div class="board-area">
         <div class="eval-wrap"><div class="eval-lbl">♟</div><div class="eval-bar"><div class="eval-fill" id="eval-fill" style="height:50%"></div></div><div class="eval-lbl">♙</div></div>
@@ -131,11 +133,7 @@
         </div>
       </div>
     </div>
-    <div class="gsidebar right">
-      <div class="stitle">Фигуры</div><div class="scard"><div id="piece-guide"></div></div>
-      <div class="tip-box"><b>💡 Совет</b><span id="tip-text">Контролируйте центр с первых ходов — e4, d4 дают больше пространства.</span></div>
-      <div class="sidebar-btns"><button class="btn btn-ghost btn-sm" onclick="nextTip()">Другой совет</button></div>
-    </div>
+
   </div>
 
   <div class="modal-ov" id="modal">
