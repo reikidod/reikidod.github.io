@@ -9,7 +9,7 @@
           ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)"
         },
         "guestUid": {
-          ".validate": "(!data.exists() && newData.val() === auth.uid) || (data.exists() && newData.val() === data.val())"
+          ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid && root.child('games').child($room).child('status').val() === 'waiting' && !root.child('games').child($room).child('guestUid').exists())"
         },
         "status": {
           ".validate": "(!data.exists() && newData.val() === 'waiting') || data.val() === newData.val() || (data.val() === 'waiting' && newData.val() === 'playing') || (data.val() === 'playing' && newData.val() === 'finished')"
