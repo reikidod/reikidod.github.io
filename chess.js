@@ -82,6 +82,7 @@ function onUserLoggedIn() {
   updateUserHeader();
   if (document.getElementById('auth').classList.contains('active')) showScreen('lobby');
   resumeLastOnlineGame();
+  tryJoinInvite();
 }
 function updateUserHeader() {
   const nameEl = document.getElementById('user-name-hdr');
@@ -154,13 +155,21 @@ function getOnlineClientId() {
   return id;
 }
 function genCode() {
-  const W = ['KING','ROOK','PAWN','WOLF','HAWK','BEAR','RUBY','IRON','NOVA','APEX'];
-  const bytes = new Uint32Array(1);
-  const random = window.crypto && window.crypto.getRandomValues
-    ? (window.crypto.getRandomValues(bytes), bytes[0] % 100000)
-    : Math.floor(Math.random() * 100000);
-  return W[Math.floor(Math.random()*W.length)] + '-' + String(random).padStart(5, '0');
+  // 96 бит случайности: длинный код практически исключает совпадения.
+  const bytes = new Uint8Array(12);
+  if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return 'CHESS-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
+function getInviteLink(code) {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('room', code);
+  return url.toString();
+}
+let pendingInviteCode = (new URLSearchParams(window.location.search).get('room') || '').trim().toUpperCase();
+let inviteJoinStarted = false;
 function saveActiveOnlineGame(code, color) {
   localStorage.setItem('chessActiveOnlineGame', JSON.stringify({ code, color, savedAt: Date.now() }));
 }
@@ -244,10 +253,10 @@ async function createOnlineGame() {
     showToast('Не удалось создать игру: ' + e.message, 4000);
   }
 }
-async function joinGame() {
-  const code = document.getElementById('join-input').value.trim().toUpperCase();
-  if (!code) { showToast('Введите код'); return; }
-  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return; }
+async function joinGame(codeOverride) {
+  const code = (codeOverride || document.getElementById('join-input').value).trim().toUpperCase();
+  if (!code) { showToast('Введите код'); return false; }
+  if (!firebaseReady || !currentUser || !currentUser.uid) { showToast('Для онлайн-игры войдите или выберите гостевой вход'); return false; }
   try {
     const ref = db.ref('games/' + code);
     const clientId = getOnlineClientId();
@@ -264,7 +273,6 @@ async function joinGame() {
         data.updatedAt = Date.now();
         return data;
       }
-      // Повторный вход разрешён только тому же браузеру/профилю, который занял место.
       if (data.status === 'playing' && data.hostUid === currentUser.uid) return data;
       if (data.status === 'playing' && data.guestUid === currentUser.uid) return data;
       return;
@@ -272,14 +280,27 @@ async function joinGame() {
     if (!result.committed) {
       const latest = result.snapshot && result.snapshot.val();
       showToast(latest ? 'Комната занята или код принадлежит другой партии' : 'Игра не найдена');
-      return;
+      return false;
     }
     const data = result.snapshot.val();
     const color = data.hostUid === currentUser.uid ? 'w' : 'b';
     currentCode = code; myColor = color; isOnline = true; onlineGameRef = ref;
     saveActiveOnlineGame(code, color);
     startOnlineGame(color, color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост'), data);
-  } catch(e) { showToast('Ошибка подключения: ' + e.message, 4000); }
+    return true;
+  } catch(e) { showToast('Ошибка подключения: ' + e.message, 4000); return false; }
+}
+async function tryJoinInvite() {
+  if (!pendingInviteCode || inviteJoinStarted || !firebaseReady || !currentUser || !currentUser.uid) return;
+  inviteJoinStarted = true;
+  document.getElementById('join-input').value = pendingInviteCode;
+  const joined = await joinGame(pendingInviteCode);
+  if (joined) {
+    pendingInviteCode = '';
+    showToast('Вы присоединились по приглашению', 3000);
+  } else {
+    inviteJoinStarted = false;
+  }
 }
 function applyOnlineSnapshot(data, replaying) {
   if (!data) return;
@@ -397,8 +418,17 @@ async function cancelOnlineGame() {
   if (onlineConnectionRef) { onlineConnectionRef.off(); onlineConnectionRef = null; }
   isOnline = false; currentCode = null; clearActiveOnlineGame(); showScreen('lobby');
 }
-function copyCode() {
-  navigator.clipboard.writeText(document.getElementById('wr-code').textContent).then(() => showToast('Код скопирован'));
+async function copyCode() {
+  try {
+    await navigator.clipboard.writeText(document.getElementById('wr-code').textContent);
+    showToast('Код скопирован');
+  } catch (e) { showToast('Не удалось скопировать код'); }
+}
+async function copyInviteLink() {
+  try {
+    await navigator.clipboard.writeText(getInviteLink(currentCode));
+    showToast('Ссылка-приглашение скопирована');
+  } catch (e) { showToast('Не удалось скопировать ссылку'); }
 }
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
