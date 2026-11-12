@@ -248,3 +248,12 @@ body { background: var(--bg); font-family: 'Nunito', sans-serif; color: var(--cr
   .sidebar-actions .btn { font-size:10px; padding:8px 5px; }
   .gcenter { padding-top:8px; }
 }
+
+
+/* Онлайн-приглашения */
+.wr-share-row { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
+#join-input { min-width:0; }
+@media (max-width:520px) {
+  .wr-share-row { width:100%; }
+  .wr-share-row .btn { flex:1 1 145px; }
+}
