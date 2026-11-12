@@ -27,8 +27,7 @@ try {
 } catch (e) {
   console.warn('Firebase не настроен');
   setTimeout(() => {
-    document.getElementById('auth').classList.remove('active');
-    document.getElementById('lobby').classList.add('active');
+    showScreen('lobby');
   }, 0);
 }
 
@@ -625,7 +624,7 @@ function renderClocks() {
     box.classList.toggle('low', clockRemaining[color] <= 20);
   });
   const panel = document.getElementById('clock-panel');
-  if (panel) panel.style.display = clockEnabled ? 'flex' : 'none';
+  if (panel) panel.style.display = 'flex';
 }
 function stopClock() { if (clockInterval) clearInterval(clockInterval); clockInterval = null; }
 function startClock() {
@@ -663,13 +662,17 @@ function reviewMove(ply) {
   turn = reviewIndex%2===0 ? 'w' : 'b';
   gameOver = false; sel=null; poss=[];
   lastMv = reviewIndex ? {fr:history[reviewIndex-1].from[0],fc:history[reviewIndex-1].from[1],tr:history[reviewIndex-1].to[0],tc:history[reviewIndex-1].to[1]} : null;
-  renderBoard(); updateStatus(); updatePlayerBanners(); renderReviewPosition();
+  renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewPosition();
 }
 function applyHistoryMoveToBoard(target, entry) {
   const [fr,fc]=entry.from, [tr,tc]=entry.to;
   target[tr][tc]=entry.piece; target[fr][fc]=null;
   if (entry.piece==='wP' && tr===0) target[tr][tc]='wQ';
   if (entry.piece==='bP' && tr===7) target[tr][tc]='bQ';
+  if (entry.piece==='wK' && fc===4 && tc===6) { target[7][5]='wR'; target[7][7]=null; }
+  if (entry.piece==='wK' && fc===4 && tc===2) { target[7][3]='wR'; target[7][0]=null; }
+  if (entry.piece==='bK' && fc===4 && tc===6) { target[0][5]='bR'; target[0][7]=null; }
+  if (entry.piece==='bK' && fc===4 && tc===2) { target[0][3]='bR'; target[0][0]=null; }
 }
 function reviewStep(delta) {
   const current = reviewIndex===null ? history.length : reviewIndex;
@@ -684,7 +687,7 @@ function returnToLive() {
     turn=last.piece[0]==='w'?'b':'w';
     lastMv={fr:last.from[0],fc:last.from[1],tr:last.to[0],tc:last.to[1]};
   } else { board=INIT_BOARD.map(r=>r.slice()); turn='w'; lastMv=null; }
-  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); renderReviewPosition();
+  gameOver=false; renderBoard(); updateStatus(); updatePlayerBanners(); updateEval(); renderReviewPosition();
   if (clockEnabled) startClock();
 }
 function renderReviewPosition() {
