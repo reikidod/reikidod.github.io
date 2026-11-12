@@ -21,7 +21,6 @@
           ".validate": "newData.isNumber() && (!data.exists() || newData.val() >= data.val())"
         },
         "moves": {
-          ".validate": "newData.numChildren() >= data.numChildren()",
           "$seq": {
             ".validate": "newData.hasChildren(['fr', 'fc', 'tr', 'tc', 'by', 'seq', 'ts']) && (newData.child('by').val() === 'w' || newData.child('by').val() === 'b')"
           }
