@@ -180,8 +180,7 @@ async function resumeLastOnlineGame() {
     const data = snap.val();
     const clientId = getOnlineClientId();
     const uid = auth && auth.currentUser ? auth.currentUser.uid : null;
-    if (!data || !uid || (data.hostUid !== uid && data.guestUid !== uid) ||
-        (data.hostClientId !== clientId && data.guestClientId !== clientId)) {
+    if (!data || !uid || (data.hostUid !== uid && data.guestUid !== uid)) {
       clearActiveOnlineGame();
       return;
     }
@@ -266,8 +265,8 @@ async function joinGame() {
         return data;
       }
       // Повторный вход разрешён только тому же браузеру/профилю, который занял место.
-      if (data.status === 'playing' && data.hostClientId === clientId) return data;
-      if (data.status === 'playing' && data.guestClientId === clientId) return data;
+      if (data.status === 'playing' && data.hostUid === currentUser.uid) return data;
+      if (data.status === 'playing' && data.guestUid === currentUser.uid) return data;
       return;
     }, undefined, false);
     if (!result.committed) {
@@ -276,7 +275,7 @@ async function joinGame() {
       return;
     }
     const data = result.snapshot.val();
-    const color = data.hostClientId === clientId ? 'w' : 'b';
+    const color = data.hostUid === currentUser.uid ? 'w' : 'b';
     currentCode = code; myColor = color; isOnline = true; onlineGameRef = ref;
     saveActiveOnlineGame(code, color);
     startOnlineGame(color, color === 'w' ? (data.guest || 'Соперник') : (data.host || 'Хост'), data);
