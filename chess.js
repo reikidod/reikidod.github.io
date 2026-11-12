@@ -266,17 +266,37 @@ const INIT_BOARD = [
 const PIECE_VALUES = { P:1, N:3, B:3, R:5, Q:9, K:100 };
 
 let animEnabled = localStorage.getItem('chessAnim') !== '0';
+let trainingEnabled = localStorage.getItem('chessTraining') === '1';
 let animating = false;
-function toggleAnim() {
-  animEnabled = !animEnabled;
+function toggleAnim() { setAnimationSetting(!animEnabled); }
+function setAnimationSetting(enabled) {
+  animEnabled = !!enabled;
   localStorage.setItem('chessAnim', animEnabled ? '1' : '0');
-  const btn = document.getElementById('anim-btn');
-  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+  const input = document.getElementById('setting-animation');
+  if (input) input.checked = animEnabled;
   showToast(animEnabled ? 'Анимация ходов включена' : 'Анимация ходов выключена');
 }
+function setTrainingSetting(enabled) {
+  trainingEnabled = !!enabled;
+  localStorage.setItem('chessTraining', trainingEnabled ? '1' : '0');
+  const input = document.getElementById('setting-training');
+  const panel = document.getElementById('training-panel');
+  if (input) input.checked = trainingEnabled;
+  if (panel) panel.classList.toggle('hidden', !trainingEnabled);
+  if (trainingEnabled) buildPieceGuide();
+}
+function openSettings() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+  document.getElementById('setting-animation').checked = animEnabled;
+  document.getElementById('setting-training').checked = trainingEnabled;
+  document.getElementById('training-panel').classList.toggle('hidden', !trainingEnabled);
+  modal.classList.add('show');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('show'); }
 function updateAnimBtn() {
-  const btn = document.getElementById('anim-btn');
-  if (btn) btn.textContent = animEnabled ? '🎬 Анимация: вкл' : '🎬 Анимация: выкл';
+  const input = document.getElementById('setting-animation');
+  if (input) input.checked = animEnabled;
 }
 function getSquareEl(r, c) {
   const boardEl = document.getElementById('board');
@@ -738,7 +758,8 @@ const TIPS = [
 let tipIdx = 0;
 function nextTip() {
   tipIdx = (tipIdx + 1) % TIPS.length;
-  document.getElementById('tip-text').textContent = TIPS[tipIdx];
+  const el = document.getElementById('tip-text');
+  if (el) el.textContent = TIPS[tipIdx];
 }
 buildPieceGuide();
 updateAnimBtn();
