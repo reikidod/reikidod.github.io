@@ -283,44 +283,40 @@ async function joinGame(codeOverride) {
     }
     const clientId = getOnlineClientId();
     const playerName = currentUser ? currentUser.displayName : 'Гость';
-    let joinAbortReason = '';
-    const result = await ref.transaction(data => {
-      if (!data) {
-        joinAbortReason = 'Firebase передал пустую запись в транзакцию';
-        return;
-      }
-      if (data.status === 'waiting' && !data.guest && !data.guestUid) {
-        data.status = 'playing';
-        data.guest = playerName;
-        data.guestClientId = clientId;
-        data.guestUid = currentUser.uid;
-        data.moveNo = Number(data.moveNo) || 0;
-        data.moves = data.moves || {};
-        data.updatedAt = Date.now();
-        return data;
-      }
-      if (data.status === 'playing' && data.hostUid === currentUser.uid) return data;
-      if (data.status === 'playing' && data.guestUid === currentUser.uid) return data;
-      joinAbortReason = 'status=' + String(data.status) + ', guest=' + String(data.guest || '') + ', guestUid=' + String(data.guestUid || '');
-      return;
-    }, undefined, false);
-    if (!result.committed) {
-      const latest = result.snapshot && result.snapshot.val();
-      console.error('Firebase join transaction was not committed', {
-        code, uid: currentUser.uid, abortReason: joinAbortReason,
-        snapshotExists: !!(result.snapshot && result.snapshot.exists()),
-        snapshot: latest
-      });
-      if (joinAbortReason) {
-        showToast('Не удалось войти: комната уже занята или не ожидает игрока (' + joinAbortReason + ')', 6500);
-      } else if (latest) {
-        showToast('Комната занята или код принадлежит другой партии', 5000);
-      } else {
-        showToast('Транзакция отменена без данных. Откройте консоль браузера (F12) и пришлите ошибку Firebase.', 6500);
-      }
+    let data = roomCheck.val();
+
+    if (data.status === 'playing' &&
+        data.hostUid !== currentUser.uid &&
+        data.guestUid !== currentUser.uid) {
+      showToast('Эта комната уже занята другой партией.', 5000);
       return false;
     }
-    const data = result.snapshot.val();
+
+    if (data.status === 'waiting') {
+      if (data.guest || data.guestUid) {
+        showToast('К комнате уже подключается другой игрок. Создайте новую комнату.', 5000);
+        return false;
+      }
+      await ref.update({
+        status: 'playing',
+        guest: playerName,
+        guestClientId: clientId,
+        guestUid: currentUser.uid,
+        moveNo: Number(data.moveNo) || 0,
+        moves: data.moves || {},
+        updatedAt: Date.now()
+      });
+      const joinedSnapshot = await ref.get();
+      data = joinedSnapshot.val();
+      if (!data || data.guestUid !== currentUser.uid) {
+        showToast('Firebase не подтвердил подключение гостя. Проверьте правила доступа.', 5500);
+        return false;
+      }
+    } else if (data.status !== 'playing' ||
+               (data.hostUid !== currentUser.uid && data.guestUid !== currentUser.uid)) {
+      showToast('Комната уже не ожидает игрока или занята.', 5000);
+      return false;
+    }
     const color = data.hostUid === currentUser.uid ? 'w' : 'b';
     currentCode = code; myColor = color; isOnline = true; onlineGameRef = ref;
     saveActiveOnlineGame(code, color);
